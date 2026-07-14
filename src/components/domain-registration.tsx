@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import type { ProviderTarget } from "@/infrastructure/providers/targets";
 
 const reserved = new Set(["www", "api", "admin", "domains", "mail", "smtp", "imap", "pop", "ftp", "cdn", "static", "assets", "status", "support", "help", "docs", "dev", "test", "staging", "_acme-challenge"]);
-const targets = { Vercel: ["degunavi", "matchfabo", "keiri"], "Cloudflare Pages": ["landing", "portal"], "Cloudflare Workers": ["keiri-api", "webhook-router"] };
-type Provider = keyof typeof targets;
+const providerLabels = { vercel: "Vercel", cloudflare_pages: "Cloudflare Pages", cloudflare_workers: "Cloudflare Workers" };
+type Provider = keyof typeof providerLabels;
 
 function validationMessage(label: string) {
   if (!label) return "";
@@ -13,25 +16,58 @@ function validationMessage(label: string) {
   return "";
 }
 
-export function DomainRegistration() {
+export function DomainRegistration({ rootDomain, targets }: { rootDomain: string; targets: ProviderTarget[] }) {
+  const router = useRouter();
   const [label, setLabel] = useState("sample");
-  const [provider, setProvider] = useState<Provider>("Vercel");
-  const [target, setTarget] = useState(targets.Vercel[0]);
+  const [provider, setProvider] = useState<Provider>("vercel");
+  const [targetId, setTargetId] = useState(() => targets.find((target) => target.provider === "vercel")?.id ?? "");
   const [planned, setPlanned] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestError, setRequestError] = useState("");
   const error = useMemo(() => validationMessage(label), [label]);
-  const fqdn = `${label || "…"}.shinodev.com`;
-  const changeProvider = (value: Provider) => { setProvider(value); setTarget(targets[value][0]); setPlanned(false); };
+  const availableTargets = targets.filter((target) => target.provider === provider);
+  const target = availableTargets.find((candidate) => candidate.id === targetId);
+  const fqdn = `${label || "…"}.${rootDomain}`;
+
+  const changeProvider = (value: Provider) => {
+    setProvider(value);
+    setTargetId(targets.find((candidate) => candidate.provider === value)?.id ?? "");
+    setPlanned(false);
+    setRequestError("");
+  };
+
+  const createDraft = async () => {
+    if (error || !target) return;
+    setSubmitting(true);
+    setRequestError("");
+    try {
+      const response = await fetch("/api/domains/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label, provider, targetId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "下書きを作成できませんでした。");
+      setPlanned(true);
+      router.refresh();
+    } catch (caught) {
+      setRequestError(caught instanceof Error ? caught.message : "下書きを作成できませんでした。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return <section className="panel registration" id="register">
-    <div className="panel-heading"><div><p className="eyebrow">NEW ALLOCATION</p><h2>サブドメインを登録</h2></div><span className="dry-run">変更前に必ず計画を確認します</span></div>
+    <div className="panel-heading"><div><p className="eyebrow">NEW ALLOCATION</p><h2>サブドメインを登録</h2></div><span className="dry-run">外部変更前に下書きを作成します</span></div>
     <div className="register-grid">
       <div className="form-area">
-        <div className="form-row"><div className="field"><label htmlFor="label">サブドメイン</label><input id="label" value={label} onChange={(event) => { setLabel(event.target.value.toLowerCase()); setPlanned(false); }} placeholder="例: degunavi" /><span className="hint">{fqdn}</span></div><div className="field"><label htmlFor="provider">配置先</label><select id="provider" value={provider} onChange={(event) => changeProvider(event.target.value as Provider)}>{Object.keys(targets).map((item) => <option key={item}>{item}</option>)}</select><span className="hint">対象の種類に応じて安全な手順を選択</span></div></div>
+        <div className="form-row"><div className="field"><label htmlFor="label">サブドメイン</label><input id="label" value={label} onChange={(event) => { setLabel(event.target.value.toLowerCase()); setPlanned(false); }} placeholder="例: degunavi" /><span className="hint">{fqdn}</span></div><div className="field"><label htmlFor="provider">配置先</label><select id="provider" value={provider} onChange={(event) => changeProvider(event.target.value as Provider)}>{Object.entries(providerLabels).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select><span className="hint">接続済みサービスから選択</span></div></div>
         {error && <p className="validation">{error}</p>}
-        <div className="field"><label htmlFor="target">対象プロジェクト / Worker</label><select id="target" value={target} onChange={(event) => { setTarget(event.target.value); setPlanned(false); }}>{targets[provider].map((item) => <option key={item}>{item}</option>)}</select></div>
-        <div className="form-actions"><span className="dry-run">ドライランでは外部リソースを変更しません。</span><button className="plan-button" type="button" disabled={Boolean(error)} onClick={() => setPlanned(true)}>実行計画を作成 →</button></div>
+        <div className="field"><label htmlFor="target">対象プロジェクト / Worker</label><select id="target" value={targetId} onChange={(event) => { setTargetId(event.target.value); setPlanned(false); }} disabled={availableTargets.length === 0}>{availableTargets.length === 0 ? <option>利用できる公開先がありません</option> : availableTargets.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+        {requestError && <p className="validation">{requestError}</p>}
+        <div className="form-actions"><span className="dry-run">下書き作成では DNS・Vercel・Cloudflare を変更しません。</span><button className="plan-button" type="button" disabled={Boolean(error) || !target || submitting} onClick={createDraft}>{submitting ? "作成中…" : "下書きを作成 →"}</button></div>
       </div>
-      <aside className="plan" aria-live="polite"><h3>{planned ? "実行予定の変更" : "登録プランのプレビュー"}</h3><div className="plan-fqdn">{fqdn}</div><ol className="steps"><li><b>01</b><span>競合を確認<small>DNS・プロバイダー・管理履歴を照合</small></span></li><li><b>02</b><span>{provider} に関連付け<small>{target} を公開先として指定</small></span></li><li><b>03</b><span>DNS と状態を確認<small>{provider === "Vercel" ? "DNS Only CNAME を必要な場合に作成" : "既存レコードを上書きしない"}</small></span></li></ol><p className="plan-note">{planned ? "次の画面で、競合結果と作成・ロールバック対象を確認してから実行できます。" : "入力後に計画を作成すると、外部APIに接続して競合と対象の存在を確認します。"}</p></aside>
+      <aside className="plan" aria-live="polite"><h3>{planned ? "下書きを作成しました" : "登録プランのプレビュー"}</h3><div className="plan-fqdn">{fqdn}</div><ol className="steps"><li><b>01</b><span>対象を確認<small>{target ? `${providerLabels[provider]}: ${target.name}` : "公開先を選択してください"}</small></span></li><li><b>02</b><span>下書きを保存<small>Turso に管理対象と操作履歴を保存</small></span></li><li><b>03</b><span>実行を承認<small>次の操作でDNS・公開先へ変更を適用</small></span></li></ol><p className="plan-note">{planned ? "一覧に下書きを追加しました。実行承認までは外部サービスを変更しません。" : "候補は接続済みの実在プロジェクト・Workerです。"}</p></aside>
     </div>
   </section>;
 }
