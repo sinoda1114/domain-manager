@@ -11,10 +11,10 @@ const inputSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  if (!(await isAdmin())) return Response.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await isAdmin())) return Response.json({ error: "ログインが必要です。" }, { status: 401 });
 
   const input = inputSchema.safeParse(await request.json().catch(() => null));
-  if (!input.success) return Response.json({ error: "invalid_input" }, { status: 400 });
+  if (!input.success) return Response.json({ error: "入力内容を確認してください。" }, { status: 400 });
 
   try {
     const target = ensureProviderTarget(await listProviderTargets(), input.data);
@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     });
     return Response.json({ domain }, { status: 201 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "draft_creation_failed" }, { status: 400 });
+    if (error instanceof Error && /UNIQUE constraint failed: domains\.fqdn/i.test(error.message)) {
+      return Response.json({ error: "このサブドメインは既に登録されています。別の名前を選んでください。" }, { status: 409 });
+    }
+    return Response.json({ error: "下書きを作成できませんでした。入力内容と公開先を確認して、もう一度お試しください。" }, { status: 400 });
   }
 }

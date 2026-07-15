@@ -1,5 +1,18 @@
 import { z } from "zod";
+
 import { findManagedDomain, updateDomainVerification } from "@/infrastructure/db/domain-repository";
 import { isAdmin } from "@/lib/auth";
-const input=z.object({domainId:z.string().uuid()});
-export async function POST(request:Request){if(!(await isAdmin()))return Response.json({error:"unauthorized"},{status:401});const parsed=input.safeParse(await request.json().catch(()=>null));if(!parsed.success)return Response.json({error:"invalid_input"},{status:400});const domain=await findManagedDomain(parsed.data.domainId);if(!domain)return Response.json({error:"not_found"},{status:404});try{const response=await fetch(`https://${domain.fqdn}`,{method:"HEAD",redirect:"manual",signal:AbortSignal.timeout(10_000)});const status=response.ok||response.status===301||response.status===302||response.status===307||response.status===308?"Active":"SSL Pending";await updateDomainVerification(domain.id,status);return Response.json({ok:true,status});}catch{await updateDomainVerification(domain.id,"DNS Pending");return Response.json({ok:true,status:"DNS Pending"});}}
+import { verifyPublicDomain } from "@/lib/domain-verification";
+
+const input = z.object({ domainId: z.string().uuid() });
+
+export async function POST(request: Request) {
+  if (!(await isAdmin())) return Response.json({ error: "ログインが必要です。" }, { status: 401 });
+  const parsed = input.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: "入力内容を確認してください。" }, { status: 400 });
+  const domain = await findManagedDomain(parsed.data.domainId);
+  if (!domain) return Response.json({ error: "対象のドメインが見つかりません。" }, { status: 404 });
+  const status = await verifyPublicDomain(domain.fqdn);
+  await updateDomainVerification(domain.id, status);
+  return Response.json({ ok: true, status });
+}
