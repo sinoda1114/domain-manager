@@ -21,7 +21,7 @@ async function resolvePublicAddress(hostname: string) {
   if (blockedPatterns.some(pattern => pattern.test(hostname))) {
     throw new Error("blocked_hostname");
   }
-  const response = await fetch(` { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5_000), cache: "no-store" });
+  const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=A`, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5_000), cache: "no-store" });
   if (!response.ok) throw new Error("dns_lookup_failed");
   const body = await response.json() as { Answer?: Array<{ type: number; data: string }> };
   const address = body.Answer?.find((answer) => answer.type === 1)?.data;

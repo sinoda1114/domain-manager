@@ -34,4 +34,6 @@ jobs:
       - name: Build
         run: pnpm build
       - name: Audit dependencies
-        run: pnpm audit --audit-level=high
+        # npm監査APIの一時的な障害で、コード品質ゲート全体を誤停止させない。
+        # 脆弱性が検出された場合はaudit-levelで失敗し、レジストリ障害だけを許容する。
+        run: pnpm audit --audit-level=high --ignore-registry-errors
