@@ -44,4 +44,6 @@
 .suggestion-controls { max-width:760px; }
 .suggestion-controls .suggest-button { justify-self:end; width:min(100%,220px); }
 @media (max-width:760px) { .provider-options,.suggestion-controls { max-width:none; }.suggestion-controls .suggest-button { justify-self:stretch; width:100%; } }
+.provider-options { max-width:680px; }
+.suggestion-controls .suggest-button { justify-self:end; width:220px; max-width:100%; }
 .service-kicker { display:flex; align-items:center; gap:8px; margin:0 0 9px!important; color:var(--muted)!important; font:600 10px var(--font-mono)!important; letter-spacing:.04em!important; }.service-kicker a { color:var(--blue); font-weight:700; letter-spacing:0; }.service-kicker a:hover,.service-kicker a:focus-visible { text-decoration:underline; }
