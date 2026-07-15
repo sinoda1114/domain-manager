@@ -36,4 +36,5 @@
 /* The preview column was removed; let the registration form use the full panel width. */
 .register-grid { grid-template-columns:minmax(0,1fr); }
 .suggestion-controls .choice-options button span { flex:0 0 auto; overflow:visible; text-overflow:clip; white-space:nowrap; }
+.record-system { background:#fafbff; }.system-managed-label { color:var(--muted); font-size:10px; font-weight:650; white-space:nowrap; }
 .service-kicker { display:flex; align-items:center; gap:8px; margin:0 0 9px!important; color:var(--muted)!important; font:600 10px var(--font-mono)!important; letter-spacing:.04em!important; }.service-kicker a { color:var(--blue); font-weight:700; letter-spacing:0; }.service-kicker a:hover,.service-kicker a:focus-visible { text-decoration:underline; }
