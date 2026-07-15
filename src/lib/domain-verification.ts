@@ -3,7 +3,25 @@ import https from "node:https";
 export type DomainVerificationStatus = "Active" | "SSL Pending" | "DNS Pending";
 
 async function resolvePublicAddress(hostname: string) {
-  const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=A`, { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5_000), cache: "no-store" });
+  // Validate hostname format and prevent SSRF attacks
+  const hostnamePattern = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+  if (!hostnamePattern.test(hostname) || hostname.includes("..") || hostname.length > 253) {
+    throw new Error("invalid_hostname");
+  }
+  // Block access to internal/private IP ranges and cloud metadata endpoints
+  const blockedPatterns = [
+    /^localhost$/i,
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[01])\./,
+    /^192\.168\./,
+    /^169\.254\.169\.254$/, // AWS/GCP metadata
+    /metadata\.google\.internal$/i,
+  ];
+  if (blockedPatterns.some(pattern => pattern.test(hostname))) {
+    throw new Error("blocked_hostname");
+  }
+  const response = await fetch(` { headers: { accept: "application/dns-json" }, signal: AbortSignal.timeout(5_000), cache: "no-store" });
   if (!response.ok) throw new Error("dns_lookup_failed");
   const body = await response.json() as { Answer?: Array<{ type: number; data: string }> };
   const address = body.Answer?.find((answer) => answer.type === 1)?.data;
