@@ -10,10 +10,10 @@ export function LoginForm({ googleEnabled, authSetupRequired = false }: { google
     setError("");
     try {
       await signIn("google", { callbackUrl: "/" });
-    } catch {
-      setPending(false);
-      setError("Googleログインを開始できませんでした。時間をおいて再試行してください。");
-    }
+  } catch (error) {
+    console.error("google_signin_failed", error instanceof Error ? error.message : error);
+    setPending(false);
+    setError("Googleログインを開始できませんでした。時間をおいて再試行してください。");
   }
   if (googleEnabled) return <div className="google-login-panel"><button className="google-login-button" type="button" onClick={startGoogleSignIn} disabled={pending}>{pending ? "Googleへ移動中…" : "Googleアカウントでログイン"}</button>{error && <p role="alert">{error}</p>}<p>許可されたGoogleアカウントのみ利用できます。</p></div>;
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setPending(true); setError(""); const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) }); setPending(false); if (!response.ok) { setError(response.status === 429 ? "試行回数が上限に達しました。しばらくしてから再試行してください。" : "パスワードを確認してください。"); return; } setPassword(""); router.replace("/"); router.refresh(); }
