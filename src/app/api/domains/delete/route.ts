@@ -39,7 +39,8 @@ export async function POST(request: Request) {
         const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetId)}/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !body.success) throw new Error("pages_delete_failed");
-        await deleteCloudflareDnsRecord(dnsRecord!.externalId, env);
+        if (!dnsRecord) throw new Error("dns_record_missing");
+        await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
       } else if (domain.provider === "cloudflare_workers") {
         const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
         const body = await response.json().catch(() => ({}));
