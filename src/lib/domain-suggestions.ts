@@ -50,7 +50,12 @@ export async function generateDomainSuggestions(input: z.infer<typeof suggestion
   const text = body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("");
   if (!text) throw new Error("Geminiから候補を受け取れませんでした。");
 
-  const parsed = suggestionResponseSchema.safeParse(JSON.parse(text));
+  let parsed;
+  try {
+    parsed = suggestionResponseSchema.safeParse(JSON.parse(text));
+  } catch {
+    throw new Error("Geminiの候補形式を確認できませんでした。再試行してください。");
+  }
   if (!parsed.success) throw new Error("Geminiの候補形式を確認できませんでした。再試行してください。");
   const groups = parsed.data.groups.filter((group) => input.purposes.includes(group.purpose) && input.tones.includes(group.tone)).map((group) => {
     const unique = new Map<string, DomainSuggestion>();
