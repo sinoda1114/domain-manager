@@ -44,7 +44,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   const error = useMemo(() => validationMessage(label), [label]);
   const availableTargets = targets.filter((target) => target.provider === provider);
   const target = availableTargets.find((candidate) => candidate.id === targetId);
-  const fqdn = `${label || "…"}.${rootDomain}`;
+  const fqdn = label ? `${label}.${rootDomain}` : "";
 
   const togglePurpose = (purpose: Purpose) => setPurposes((current) => current.includes(purpose) ? (current.length === 1 ? current : current.filter((item) => item !== purpose)) : [...current, purpose]);
   const toggleTone = (tone: Tone) => setTones((current) => current.includes(tone) ? (current.length === 1 ? current : current.filter((item) => item !== tone)) : [...current, tone]);
