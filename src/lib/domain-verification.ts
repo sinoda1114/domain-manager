@@ -30,6 +30,20 @@ async function resolvePublicAddress(hostname: string) {
 }
 
 async function verifyHttps(hostname: string, address: string) {
+  // Validate IP address is not in private/internal ranges
+  const privateRanges = [
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[01])\./,
+    /^192\.168\./,
+    /^169\.254\./,
+    /^0\./,
+    /^224\./,
+    /^240\./,
+  ];
+  if (privateRanges.some(pattern => pattern.test(address))) {
+    throw new Error("private_ip_blocked");
+  }
   await new Promise<void>((resolve, reject) => {
     const request = https.request({ hostname: address, port: 443, path: "/", method: "HEAD", servername: hostname, headers: { host: hostname }, timeout: 10_000 }, (response) => {
       response.resume();
