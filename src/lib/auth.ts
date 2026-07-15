@@ -2,6 +2,7 @@ import { createHmac, scryptSync, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getServerEnv } from "@/lib/env";
+import { isGoogleAdmin, isGoogleAuthRequired } from "@/lib/google-auth";
 
 const cookieName = "domain_manager_session";
 const sessionLifetimeSeconds = 60 * 60 * 8;
@@ -36,7 +37,9 @@ export function isValidSession(value: string | undefined): boolean {
 export const sessionCookie = { name: cookieName, maxAge: sessionLifetimeSeconds };
 
 export async function isAdmin(): Promise<boolean> {
-  return isValidSession((await cookies()).get(cookieName)?.value);
+  if (isGoogleAuthRequired()) return isGoogleAdmin();
+  if (isValidSession((await cookies()).get(cookieName)?.value)) return true;
+  return isGoogleAdmin();
 }
 
 export async function requireAdmin(): Promise<void> {

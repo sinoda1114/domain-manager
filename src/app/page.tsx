@@ -8,6 +8,7 @@ import { listManagedDomains, listOperations } from "@/infrastructure/db/domain-r
 import { listProviderTargets } from "@/infrastructure/providers/targets";
 import { isAdmin } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import { redirect } from "next/navigation";
 import Image from "next/image";
 
 const statusClass: Record<string, string> = { Active: "status-active", "SSL Pending": "status-pending", "DNS Pending": "status-pending", Draft: "status-draft", Executing: "status-progress", Failed: "status-failed" };
@@ -20,6 +21,7 @@ function sourceUrlFor(targets: Awaited<ReturnType<typeof listProviderTargets>>, 
 
 export default async function Home() {
   const signedIn = await isAdmin();
+  if (!signedIn) redirect("/login");
   const rootDomain = getServerEnv().ROOT_DOMAIN;
   const serviceHostname = `domains.${rootDomain}`;
   const serviceUrl = `https://${serviceHostname}`;
