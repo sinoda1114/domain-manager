@@ -34,7 +34,8 @@ export async function POST(request: Request) {
       if (domain.provider === "vercel") {
         const response = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(domain.providerTargetId)}/domains/${encodeURIComponent(domain.fqdn)}?teamId=${encodeURIComponent(env.VERCEL_TEAM_ID)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` } });
         if (!response.ok) throw new Error("vercel_delete_failed");
-        await deleteCloudflareDnsRecord(dnsRecord!.externalId, env);
+        if (!dnsRecord) throw new Error("dns_record_missing");
+        await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
       } else if (domain.provider === "cloudflare_pages") {
         const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetId)}/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
         const body = await response.json().catch(() => ({}));
