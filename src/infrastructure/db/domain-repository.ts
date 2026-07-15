@@ -36,6 +36,20 @@ export async function listManagedDomains(): Promise<ManagedDomain[]> {
   }));
 }
 
+export async function listPendingDomains(): Promise<ManagedDomain[]> {
+  const result = await getDatabaseClient().execute({
+    sql: `SELECT id, label, fqdn, provider, provider_target_id, provider_target_name, status, last_checked_at, created_at
+          FROM domains WHERE deleted_at IS NULL AND status IN ('DNS Pending', 'SSL Pending') ORDER BY updated_at ASC`,
+    args: [],
+  });
+  return result.rows.map((row) => ({
+    id: String(row.id), label: String(row.label), fqdn: String(row.fqdn),
+    provider: providerSchema.parse(row.provider), providerTargetId: String(row.provider_target_id),
+    providerTargetName: String(row.provider_target_name), status: String(row.status),
+    lastCheckedAt: row.last_checked_at ? String(row.last_checked_at) : null, createdAt: String(row.created_at),
+  }));
+}
+
 export async function findManagedDomain(id: string): Promise<ManagedDomain | undefined> {
   const result = await getDatabaseClient().execute({ sql: `SELECT id, label, fqdn, provider, provider_target_id, provider_target_name, status, last_checked_at, created_at FROM domains WHERE id = ? AND deleted_at IS NULL`, args: [id] });
   const row = result.rows[0]; if (!row) return undefined;
@@ -48,16 +62,17 @@ export async function markDomainActive(id: string, providerDomainId: string): Pr
 
 export async function reserveExecution(domainId: string, operationId: string): Promise<boolean> {
   const client = getDatabaseClient();
-  const update = await client.execute({ sql: "UPDATE domains SET status = 'Executing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Draft'", args: [domainId] });
-  if (update.rowsAffected !== 1) return false;
-  await client.execute({ sql: "INSERT INTO operations (id, domain_id, fqdn, type, status, idempotency_key, requested_by) SELECT ?, id, fqdn, 'create', 'running', ?, 'admin' FROM domains WHERE id = ?", args: [operationId, operationId, domainId] });
-  await client.execute({ sql: "INSERT INTO operation_steps (id, operation_id, sequence, name, status, started_at) VALUES (?, ?, 1, 'provider_create', 'running', CURRENT_TIMESTAMP)", args: [randomUUID(), operationId] });
-  return true;
+  const results = await client.batch([
+    { sql: "UPDATE domains SET status = 'Executing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Draft'", args: [domainId] },
+    { sql: "INSERT INTO operations (id, domain_id, fqdn, type, status, idempotency_key, requested_by) SELECT ?, id, fqdn, 'create', 'running', ?, 'admin' FROM domains WHERE id = ? AND status = 'Executing'", args: [operationId, operationId, domainId] },
+    { sql: "INSERT INTO operation_steps (id, operation_id, sequence, name, status, started_at) SELECT ?, ?, 1, 'provider_create', 'running', CURRENT_TIMESTAMP FROM operations WHERE id = ?", args: [randomUUID(), operationId, operationId] },
+  ], "write");
+  return results[0]?.rowsAffected === 1 && results[1]?.rowsAffected === 1 && results[2]?.rowsAffected === 1;
 }
 
-export async function finishExecution(domainId: string, operationId: string, providerDomainId: string): Promise<void> {
+export async function finishExecution(domainId: string, operationId: string, providerDomainId: string, dnsRecordId?: string): Promise<void> {
   const client = getDatabaseClient();
-  await client.batch([{ sql: "UPDATE domains SET status = 'DNS Pending', provider_domain_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [providerDomainId, domainId] }, { sql: "UPDATE operations SET status = 'completed', finished_at = CURRENT_TIMESTAMP WHERE id = ?", args: [operationId] }, { sql: "UPDATE operation_steps SET status = 'completed', finished_at = CURRENT_TIMESTAMP, external_resource_id = ? WHERE operation_id = ?", args: [providerDomainId, operationId] }, { sql: "INSERT INTO managed_resources (id, domain_id, provider, resource_type, external_id, external_name, created_by_operation_id, ownership_fingerprint) SELECT ?, id, provider, 'custom_domain', ?, fqdn, ?, ? FROM domains WHERE id = ?", args: [randomUUID(), providerDomainId, operationId, `${domainId}:${providerDomainId}`, domainId] }], "write");
+  await client.batch([{ sql: "UPDATE domains SET status = 'DNS Pending', provider_domain_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [providerDomainId, domainId] }, { sql: "UPDATE operations SET status = 'completed', finished_at = CURRENT_TIMESTAMP WHERE id = ?", args: [operationId] }, { sql: "UPDATE operation_steps SET status = 'completed', finished_at = CURRENT_TIMESTAMP, external_resource_id = ? WHERE operation_id = ?", args: [providerDomainId, operationId] }, { sql: "INSERT INTO managed_resources (id, domain_id, provider, resource_type, external_id, external_name, created_by_operation_id, ownership_fingerprint) SELECT ?, id, provider, 'custom_domain', ?, fqdn, ?, ? FROM domains WHERE id = ?", args: [randomUUID(), providerDomainId, operationId, `${domainId}:${providerDomainId}`, domainId] }, { sql: "INSERT INTO managed_resources (id, domain_id, provider, resource_type, external_id, external_name, created_by_operation_id, ownership_fingerprint) SELECT ?, id, 'cloudflare', 'dns_record', ?, fqdn, ?, ? FROM domains WHERE id = ? AND ? <> ''", args: [randomUUID(), dnsRecordId ?? "", operationId, `${domainId}:${dnsRecordId ?? ""}`, domainId, dnsRecordId ?? ""] }], "write");
 }
 
 export async function failExecution(domainId: string, operationId: string): Promise<void> { await getDatabaseClient().batch([{ sql: "UPDATE domains SET status = 'Failed', updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [domainId] }, { sql: "UPDATE operations SET status = 'failed', error_code = 'provider_request_failed', finished_at = CURRENT_TIMESTAMP WHERE id = ?", args: [operationId] }, { sql: "UPDATE operation_steps SET status = 'failed', finished_at = CURRENT_TIMESTAMP WHERE operation_id = ?", args: [operationId] }], "write"); }
@@ -67,6 +82,23 @@ export async function updateDomainVerification(id: string, status: "Active" | "S
 export async function isOwnedManagedResource(domainId: string, externalName: string): Promise<boolean> {
   const result = await getDatabaseClient().execute({ sql: "SELECT 1 FROM managed_resources WHERE domain_id = ? AND external_name = ? AND deleted_at IS NULL LIMIT 1", args: [domainId, externalName] });
   return result.rows.length > 0;
+}
+
+export async function listOwnedManagedResources(domainId: string) {
+  const result = await getDatabaseClient().execute({ sql: "SELECT id, provider, resource_type, external_id, external_name, ownership_fingerprint FROM managed_resources WHERE domain_id = ? AND deleted_at IS NULL", args: [domainId] });
+  return result.rows.map((row) => ({ id: String(row.id), provider: String(row.provider), resourceType: String(row.resource_type), externalId: String(row.external_id), externalName: String(row.external_name), ownershipFingerprint: String(row.ownership_fingerprint) }));
+}
+
+export async function markDomainDeleted(domainId: string, requestedBy = "admin"): Promise<void> {
+  const client = getDatabaseClient();
+  const domain = await findManagedDomain(domainId);
+  if (!domain) throw new Error("domain_not_found");
+  const operationId = randomUUID();
+  await client.batch([
+    { sql: "UPDATE domains SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", args: [domainId] },
+    { sql: "UPDATE managed_resources SET deleted_at = CURRENT_TIMESTAMP WHERE domain_id = ? AND deleted_at IS NULL", args: [domainId] },
+    { sql: "INSERT INTO operations (id, domain_id, fqdn, type, status, idempotency_key, requested_by, finished_at) VALUES (?, ?, ?, 'delete', 'completed', ?, ?, CURRENT_TIMESTAMP)", args: [operationId, domainId, domain.fqdn, randomUUID(), requestedBy] },
+  ], "write");
 }
 
 export async function listOperations() { const result = await getDatabaseClient().execute("SELECT fqdn, type, status, requested_by, started_at, finished_at FROM operations ORDER BY started_at DESC LIMIT 20"); return result.rows.map((row) => ({ fqdn: String(row.fqdn), type: String(row.type), status: String(row.status), requestedBy: String(row.requested_by), startedAt: String(row.started_at), finishedAt: row.finished_at ? String(row.finished_at) : null })); }

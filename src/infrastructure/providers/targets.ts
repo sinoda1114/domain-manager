@@ -5,6 +5,8 @@ export type ProviderTarget = {
   id: string;
   name: string;
   provider: "vercel" | "cloudflare_pages" | "cloudflare_workers";
+  repositoryName?: string;
+  sourceUrl?: string;
 };
 
 type CloudflareResponse<T> = { success: boolean; result: T; errors?: Array<{ message?: string }> };
@@ -23,21 +25,22 @@ async function cloudflareJson<T>(path: string): Promise<T> {
 /** 管理対象として選べる実在プロジェクト・Workerを、変更なしで取得する。 */
 export async function listProviderTargets(): Promise<ProviderTarget[]> {
   const env = getProviderEnv();
-  const [pages, workers, vercelResponse] = await Promise.all([
-    cloudflareJson<Array<{ id: string; name: string }>>(`/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects`),
+  const [pages, workers, workersSubdomain, vercelResponse] = await Promise.all([
+    cloudflareJson<Array<{ id: string; name: string; subdomain?: string }>>(`/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects`),
     cloudflareJson<Array<{ id: string }>>(`/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/scripts`),
+    cloudflareJson<{ subdomain?: string }>(`/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/subdomain`).catch(() => undefined),
     fetch(`https://api.vercel.com/v9/projects?teamId=${encodeURIComponent(env.VERCEL_TEAM_ID)}&limit=100`, {
       headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` },
       cache: "no-store",
     }),
   ]);
-  const vercel = await vercelResponse.json() as { projects?: Array<{ id: string; name: string }> };
+  const vercel = await vercelResponse.json() as { projects?: Array<{ id: string; name: string; link?: { org?: string; repo?: string }; targets?: { production?: { alias?: string[] } } }> };
   if (!vercelResponse.ok || !vercel.projects) throw new Error("Vercel API request failed.");
 
   return [
-    ...vercel.projects.map(({ id, name }) => ({ id, name, provider: "vercel" as const })),
-    ...pages.map(({ id, name }) => ({ id, name, provider: "cloudflare_pages" as const })),
-    ...workers.map(({ id }) => ({ id, name: id, provider: "cloudflare_workers" as const })),
+    ...vercel.projects.map(({ id, name, link, targets }) => ({ id, name, provider: "vercel" as const, repositoryName: link?.org && link.repo ? `${link.org}/${link.repo}` : link?.repo, sourceUrl: targets?.production?.alias?.[0] ? `https://${targets.production.alias[0]}` : undefined })),
+    ...pages.map(({ id, name, subdomain }) => ({ id, name, provider: "cloudflare_pages" as const, sourceUrl: subdomain ? `https://${subdomain}` : undefined })),
+    ...workers.map(({ id }) => ({ id, name: id, provider: "cloudflare_workers" as const, sourceUrl: workersSubdomain?.subdomain ? `https://${id}.${workersSubdomain.subdomain}.workers.dev` : undefined })),
   ];
 }
 

@@ -1,80 +1,40 @@
 import { DomainRegistration } from "@/components/domain-registration";
 import { ExecuteDomainButton } from "@/components/execute-domain-button";
 import { RefreshDomainButton } from "@/components/refresh-domain-button";
+import { DeleteDomainButton } from "@/components/delete-domain-button";
+import { DomainVerificationProgress } from "@/components/domain-verification-progress";
 import { LogoutButton } from "@/components/logout-button";
-import { listManagedDomains } from "@/infrastructure/db/domain-repository";
-import { listOperations } from "@/infrastructure/db/domain-repository";
+import { listManagedDomains, listOperations } from "@/infrastructure/db/domain-repository";
 import { listProviderTargets } from "@/infrastructure/providers/targets";
 import { requireAdmin } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import Image from "next/image";
 
-const statusClass: Record<string, string> = {
-  Active: "status-active",
-  "SSL Pending": "status-pending",
-  "DNS Pending": "status-waiting",
-  Draft: "status-draft",
-  Executing: "status-waiting",
-  Failed: "status-failed",
-};
-
+const statusClass: Record<string, string> = { Active: "status-active", "SSL Pending": "status-pending", "DNS Pending": "status-pending", Draft: "status-draft", Executing: "status-progress", Failed: "status-failed" };
+const statusLabel: Record<string, string> = { Active: "公開中", "SSL Pending": "反映確認中（SSL）", "DNS Pending": "反映確認中（DNS）", Draft: "準備中", Executing: "反映中", Failed: "反映失敗" };
 const providerName = { vercel: "Vercel", cloudflare_pages: "Cloudflare Pages", cloudflare_workers: "Cloudflare Workers" };
+
+function sourceUrlFor(targets: Awaited<ReturnType<typeof listProviderTargets>>, provider: string, targetId: string) {
+  return targets.find((target) => target.provider === provider && target.id === targetId)?.sourceUrl;
+}
 
 export default async function Home() {
   await requireAdmin();
-  const [domains, targets, operations] = await Promise.all([listManagedDomains(), listProviderTargets(), listOperations()]);
+  const domains = await listManagedDomains();
+  const [targetsResult, operationsResult] = await Promise.allSettled([listProviderTargets(), listOperations()]);
+  const targets = targetsResult.status === "fulfilled" ? targetsResult.value : [];
+  const operations = operationsResult.status === "fulfilled" ? operationsResult.value : [];
   const activeCount = domains.filter((domain) => domain.status === "Active").length;
   const pendingCount = domains.length - activeCount;
-  return (
-    <main className="shell">
-      <header className="topbar">
-        <a className="brand" href="#overview" aria-label="ShinoDev Domain Manager ホーム">
-          <span className="brand-mark">S</span>
-          <span>ShinoDev <b>Domain Manager</b></span>
-        </a>
-        <div className="connection"><span className="pulse" />Cloudflare・Vercel 接続確認済み</div>
-        <LogoutButton />
-      </header>
+  const isEmpty = domains.length === 0;
 
-      <div className="workspace">
-        <aside className="sidebar" aria-label="主なメニュー">
-          <p className="nav-label">WORKSPACE</p>
-          <a className="nav-item active" href="#overview"><span>◈</span>概要</a>
-          <a className="nav-item" href="#domains"><span>◎</span>ドメイン <em>{domains.length}</em></a>
-          <a className="nav-item" href="#register"><span>＋</span>新規登録</a>
-          <a className="nav-item" href="#operations"><span>≡</span>操作履歴</a>
-          <p className="nav-label settings-label">SYSTEM</p>
-          <a className="nav-item" href="#settings"><span>◌</span>接続設定</a>
-          <div className="zone-card"><span>ZONE</span><strong>shinodev.com</strong><small>Cloudflare DNS</small></div>
-        </aside>
-
-        <section className="content" id="overview">
-          <div className="page-heading">
-            <div><p className="eyebrow">DOMAIN OPERATIONS</p><h1>ドメインの状態を、ひと目で。</h1><p className="subhead">DNS・公開先・確認状況を、変更履歴と一緒に管理します。</p></div>
-            <a className="primary-link" href="#register">サブドメインを登録 <span>→</span></a>
-          </div>
-
-          <section className="metrics" aria-label="ドメインの状態">
-            <div className="metric"><span>管理ドメイン</span><strong>{domains.length}</strong><small>すべて shinodev.com 配下</small></div>
-            <div className="metric"><span>公開中</span><strong>{activeCount}</strong><small className="positive">● HTTPS 応答確認済み</small></div>
-            <div className="metric"><span>確認待ち</span><strong>{pendingCount}</strong><small>DNS・証明書を追跡中</small></div>
-            <div className="metric accent"><span>次の操作</span><strong>状態を確認</strong><a href="#domains">保留中の{pendingCount}件を見る →</a></div>
-          </section>
-
-          <section className="panel table-panel" id="domains">
-            <div className="panel-heading"><div><p className="eyebrow">MANAGED DOMAINS</p><h2>ドメイン一覧</h2></div><a href="#register">すべて表示 →</a></div>
-            <div className="domain-table" role="table" aria-label="管理中ドメイン">
-              <div className="table-row table-header" role="row"><span>FQDN</span><span>配置先</span><span>状態</span><span>最終確認</span></div>
-              {domains.length === 0 ? <div className="table-row" role="row"><div><strong>まだ登録済みドメインはありません</strong><small>新規登録から安全な実行計画を作成してください。</small></div><span>—</span><span>—</span><span className="checked">—</span></div> : domains.map((domain) => <div className="table-row" role="row" key={domain.fqdn}>
-                <div><strong>{domain.fqdn}</strong><small>{domain.providerTargetName}</small></div><span>{providerName[domain.provider]}</span><span className={`status ${statusClass[domain.status] ?? "status-waiting"}`}>{domain.status}</span><span className="checked">{domain.status === "Draft" ? <ExecuteDomainButton domainId={domain.id} fqdn={domain.fqdn} /> : <><RefreshDomainButton domainId={domain.id} /><small>{domain.lastCheckedAt ?? "未確認"}</small></>}</span>
-              </div>)}
-            </div>
-          </section>
-
-          <section className="panel table-panel" id="operations"><div className="panel-heading"><div><p className="eyebrow">AUDIT LOG</p><h2>操作履歴</h2></div></div><div className="domain-table">{operations.length===0?<p className="checked">まだ操作履歴はありません。</p>:operations.map((operation)=><div className="table-row" key={`${operation.fqdn}-${operation.startedAt}`}><strong>{operation.fqdn}</strong><span>{operation.type}</span><span>{operation.status}</span><span className="checked">{operation.startedAt}</span></div>)}</div></section>
-
-          <DomainRegistration rootDomain={getServerEnv().ROOT_DOMAIN} targets={targets} />
-        </section>
-      </div>
-    </main>
-  );
+  return <main className="app-shell">
+    <header className="masthead"><a className="wordmark" href="#overview"><Image className="wordmark-icon" src="/icon.svg" alt="" width={30} height={30} priority />Domain Manager</a><nav aria-label="主なメニュー">{!isEmpty && <a href="#domains"><i className="ui-icon icon-domains" />ドメイン</a>}{!isEmpty && <a href="#operations"><i className="ui-icon icon-history" />履歴</a>}</nav><div><i className="connection-dot" />接続済み <LogoutButton /></div></header>
+    <div className="registry" id="overview">
+      <section className="page-hero"><div><h1>{isEmpty ? "サブドメインを追加" : "ドメイン"}</h1></div><div className="hero-state"><span><i className="ui-icon icon-globe" />管理ゾーン</span><b>shinodev.com</b><dl><div><dt>管理中</dt><dd>{domains.length}</dd></div><div><dt>公開中</dt><dd>{activeCount}</dd></div><div><dt>確認待ち</dt><dd>{pendingCount}</dd></div></dl></div></section>
+      {!isEmpty && <section className="section" id="domains"><div className="section-heading"><div><h2>ドメインを管理</h2><p className="section-description">URL確認・削除ができます。反映後は自動で状態を確認し、公開でき次第「公開中」に更新します。</p></div><span>{domains.length}件</span></div><div className="records" role="table"><div className="record record-head" role="row"><span>ドメイン</span><span>公開先</span><span>状態</span><span>確認・操作</span></div>{domains.map((domain) => <div className="record" role="row" key={domain.id}><div className="domain-cell"><a href={`https://${domain.fqdn}`} target="_blank" rel="noreferrer" className="domain-link"><strong>{domain.fqdn}</strong><i className="external-mark" aria-hidden="true">↗</i></a><small>{domain.lastCheckedAt ? `最終確認 ${domain.lastCheckedAt}` : "未確認"}</small></div><div className="target-cell"><span>{providerName[domain.provider]}</span><small>{domain.providerTargetName}</small>{sourceUrlFor(targets, domain.provider, domain.providerTargetId) && <a className="source-link" href={sourceUrlFor(targets, domain.provider, domain.providerTargetId)} target="_blank" rel="noreferrer">実体URL ↗</a>}</div>{domain.status === "DNS Pending" || domain.status === "SSL Pending" ? <DomainVerificationProgress domainId={domain.id} status={domain.status} /> : <span className={`status ${statusClass[domain.status] ?? "status-progress"}`}>{statusLabel[domain.status] ?? domain.status}</span>}<div className="record-action">{domain.status === "Draft" ? <ExecuteDomainButton domainId={domain.id} fqdn={domain.fqdn} /> : ["DNS Pending", "SSL Pending"].includes(domain.status) ? <RefreshDomainButton domainId={domain.id} /> : null}<DeleteDomainButton domainId={domain.id} fqdn={domain.fqdn} /></div></div>)}</div></section>}
+      <DomainRegistration rootDomain={getServerEnv().ROOT_DOMAIN} targets={targets} compact={isEmpty} />
+      {!isEmpty && <section className="section history-section" id="operations"><div className="section-heading"><h2>操作履歴</h2></div><div className="history-list">{operations.length === 0 ? <p>まだ履歴はありません。</p> : operations.slice(0, 6).map((operation) => <div className="history-item" key={`${operation.fqdn}-${operation.startedAt}`}><time>{operation.startedAt}</time><b>{operation.fqdn}</b><span>{operation.type}</span><span>{operation.status}</span></div>)}</div></section>}
+    </div>
+  </main>;
 }
