@@ -26,7 +26,8 @@ const toneCopy = { concise: "端的", descriptive: "説明的", brand: "ブラ�
 
 function redactRepositoryContext(value: string) {
   return value
-    .replace(/((?:api[_-]?key|token|secret|password|auth(?:orization)?)[\s:=]+)[^\s,`]+/gi, "$1[REDACTED]")
+    .replace(/(["']?(?:api[_-]?key|token|secret|password|auth(?:orization)?|private[_-]?key|client[_-]?secret)["']?\s*:\s*)("[^"]*"|'[^']*'|[^,}\s]+)/gi, "$1[REDACTED]")
+    .replace(/((?:api[_-]?key|token|secret|password|auth(?:orization)?|private[_-]?key|client[_-]?secret)[\s:=]+)[^\s,`]+/gi, "$1[REDACTED]")
     .replace(/(?:sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{20,})/g, "[REDACTED]");
 }
 
