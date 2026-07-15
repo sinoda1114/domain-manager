@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createSessionValue, sessionCookie, verifyAdminPassword } from "@/lib/auth";
+import { isGoogleAuthRequired } from "@/lib/google-auth";
 
 const loginInput = z.object({ password: z.string().min(1).max(1024) });
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
 export async function POST(request: NextRequest) {
+  if (isGoogleAuthRequired()) return Response.json({ error: "google_only" }, { status: 403 });
   const origin = request.headers.get("origin");
   if (origin && new URL(origin).host !== request.headers.get("host")) return Response.json({ error: "invalid_request" }, { status: 403 });
   const key = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";

@@ -36,6 +36,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   const [selectedSuggestion, setSelectedSuggestion] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState("");
+  const [suggestionAuthRequired, setSuggestionAuthRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -53,11 +54,14 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   const changeProvider = (value: Provider) => { setProvider(value); setTargetId(targets.find((candidate) => candidate.provider === value)?.id ?? ""); setSuggestions([]); setSelectedSuggestion(""); setRequestError(""); };
   const suggest = async () => {
     if (!target) return;
-    setSuggesting(true); setSuggestionError("");
+    setSuggesting(true); setSuggestionError(""); setSuggestionAuthRequired(false);
     try {
       const response = await fetch("/api/domains/suggestions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectName: target.name, repositoryName: target.repositoryName, purposes, tones, candidateCount }) });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "候補を生成できませんでした。");
+      if (!response.ok) {
+        if (response.status === 401) setSuggestionAuthRequired(true);
+        throw new Error(body.error ?? "候補を生成できませんでした。");
+      }
       setSuggestions(body.groups); setSelectedSuggestion("");
     } catch (caught) { setSuggestionError(caught instanceof Error ? caught.message : "候補を生成できませんでした。"); } finally { await new Promise((resolve) => setTimeout(resolve, 650)); setSuggesting(false); }
   };
@@ -90,7 +94,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
       <div className="field"><label>配置先</label><div className="provider-options" role="radiogroup" aria-label="配置先">{providers.map((item) => <button type="button" role="radio" aria-checked={provider === item.value} className={provider === item.value ? "selected" : ""} key={item.value} onClick={() => changeProvider(item.value)}><img src={item.icon} alt="" /><span>{item.label}</span></button>)}</div></div>
       <div className="field target-field"><label htmlFor="target">公開先プロジェクト / リポジトリ</label><select id="target" value={targetId} onChange={(event) => { setTargetId(event.target.value); setSuggestions([]); setSelectedSuggestion(""); }} disabled={availableTargets.length === 0}>{availableTargets.length === 0 ? <option>利用できる公開先がありません</option> : availableTargets.map((item) => <option key={item.id} value={item.id}>{item.repositoryName ? `${item.name} · ${item.repositoryName}` : item.name}</option>)}</select>{target?.repositoryName && <span className="hint">リポジトリ: {target.repositoryName}</span>}</div>
       <div className="suggestion-controls"><div className="field purpose-control"><label>用途 <small>複数選択可</small></label><div className="choice-options" role="group" aria-label="用途">{purposeOptions.map((item) => <button type="button" aria-pressed={purposes.includes(item.value)} className={purposes.includes(item.value) ? "selected" : ""} key={item.value} onClick={() => togglePurpose(item.value)}><i>{item.icon}</i><span>{item.label}</span></button>)}</div></div><div className="field tone-control"><label>スタイル <small>複数選択可</small></label><div className="choice-options tone-options" role="group" aria-label="スタイル">{toneOptions.map((item) => <button type="button" aria-pressed={tones.includes(item.value)} className={tones.includes(item.value) ? "selected" : ""} key={item.value} onClick={() => toggleTone(item.value)}><i>{item.icon}</i><span>{item.label}</span></button>)}</div></div><div className="field count-control"><label htmlFor="candidate-count">候補数</label><select id="candidate-count" value={candidateCount} onChange={(event) => setCandidateCount(Number(event.target.value))}>{Array.from({ length: 10 }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count}</option>)}</select></div><button className={`suggest-button${suggesting ? " is-loading" : ""}`} type="button" disabled={!target || suggesting} onClick={suggest} aria-live="polite"><span className="suggest-spinner" aria-hidden="true" />{suggesting ? "候補を生成中…" : "候補を生成"}</button></div>
-      {suggestionError && <p className="validation">{suggestionError}</p>}
+      {suggestionError && <div className="reflection-error" role="alert"><span>{suggestionError}</span>{suggestionAuthRequired && <a href="/login">管理者ログインへ</a>}</div>}
       {suggestions.length > 0 && <div className="suggestion-results" aria-live="polite"><p><b>名前の候補</b><span>選ぶと採用する名前に反映されます</span></p>{suggestions.map((group) => <section className="suggestion-group" key={`${group.purpose}-${group.tone}`}><h3><span className="group-purpose">{purposeOptions.find((item) => item.value === group.purpose)?.label}</span><span className="group-divider">/</span><span className="group-tone">{toneOptions.find((item) => item.value === group.tone)?.label}</span></h3><div>{group.candidates.map((candidate) => <button type="button" className={selectedSuggestion === candidate.label ? "selected" : ""} key={candidate.label} onClick={() => { setLabel(candidate.label); setSelectedSuggestion(candidate.label); }}><strong>{candidate.label}<small>.{rootDomain}</small></strong><span>{candidate.rationale}</span></button>)}</div></section>)}</div>}
       <div className="field"><label htmlFor="label">サブドメインを追加</label><input id="label" value={label} onChange={(event) => { setLabel(event.target.value.toLowerCase()); setSelectedSuggestion(""); }} placeholder="sample" aria-invalid={Boolean(error)} aria-describedby="label-validation" /><span className="hint">{fqdn}</span></div>
       {error && <p className="validation" id="label-validation" role="alert">{error}</p>}{requestError && <p className="validation" role="alert">{requestError}</p>}
