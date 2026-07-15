@@ -41,6 +41,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmationChecked, setConfirmationChecked] = useState(false);
   const [confirmationError, setConfirmationError] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
   const error = useMemo(() => validationMessage(label), [label]);
   const availableTargets = targets.filter((target) => target.provider === provider);
   const target = availableTargets.find((candidate) => candidate.id === targetId);
@@ -62,7 +63,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   };
   const openConfirmation = () => {
     if (error || !target) return;
-    setConfirmationChecked(false); setConfirmationError(""); setConfirmationOpen(true);
+    setConfirmationChecked(false); setConfirmationError(""); setAuthRequired(false); setConfirmationOpen(true);
   };
   const reflectDomain = async () => {
     if (error || !target || !confirmationChecked) return;
@@ -70,9 +71,15 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
     try {
       const response = await fetch("/api/domains/drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, provider, targetId }) });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "下書きを作成できませんでした。");
+      if (!response.ok) {
+        if (response.status === 401) { setAuthRequired(true); throw new Error("反映には管理者ログインが必要です。"); }
+        throw new Error(body.error ?? "下書きを作成できませんでした。");
+      }
       const executeResponse = await fetch("/api/domains/execute", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ domainId: body.domain.id, confirmation: `${fqdn} を反映` }) });
-      if (!executeResponse.ok) throw new Error("反映前の確認に失敗しました。下書きは保存されています。管理中のドメインから再確認できます。");
+      if (!executeResponse.ok) {
+        if (executeResponse.status === 401) { setAuthRequired(true); throw new Error("反映には管理者ログインが必要です。"); }
+        throw new Error("反映前の確認に失敗しました。下書きは保存されています。管理中のドメインから再確認できます。");
+      }
       setConfirmationOpen(false); setConfirmationChecked(false); router.refresh();
     } catch (caught) { setConfirmationError(caught instanceof Error ? caught.message : "反映を開始できませんでした。"); } finally { setSubmitting(false); }
   };
@@ -89,6 +96,6 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
       {error && <p className="validation" id="label-validation" role="alert">{error}</p>}{requestError && <p className="validation" role="alert">{requestError}</p>}
       <div className="draft-summary"><div><span>反映するサブドメイン</span><strong>{fqdn}</strong></div><div><span>公開先</span><strong>{target ? `${providerLabels[provider]} / ${target.name}` : "未選択"}</strong>{target?.sourceUrl && <a className="source-link" href={target.sourceUrl} target="_blank" rel="noreferrer">実体URL ↗</a>}</div><small>確認後に反映</small></div><div className="form-actions"><span className="dry-run">反映前に内容を確認できます</span><button className="plan-button" type="button" disabled={Boolean(error) || !target || submitting} onClick={openConfirmation}>反映内容を確認</button></div>
     </div></div>
-    {confirmationOpen && <div className="reflection-modal-backdrop" role="presentation"><section className="reflection-modal" role="dialog" aria-modal="true" aria-labelledby="reflection-title"><div className="reflection-modal-header"><div><span className="eyebrow">REFLECTION CHECK</span><h2 id="reflection-title">反映内容を確認</h2></div><button type="button" className="modal-close" onClick={() => setConfirmationOpen(false)} disabled={submitting} aria-label="閉じる">×</button></div><dl className="reflection-details"><div><dt>サブドメイン</dt><dd>{fqdn}</dd></div><div><dt>公開先</dt><dd>{providerLabels[provider]} / {target?.name}</dd></div><div><dt>実行される変更</dt><dd>DNSと公開先のカスタムドメイン設定</dd></div></dl><p className="reflection-warning">外部サービスへ反映します。自動ロールバックは行いません。反映後は公開状態を自動で確認します。</p><label className="reflection-check"><input type="checkbox" checked={confirmationChecked} onChange={(event) => setConfirmationChecked(event.target.checked)} disabled={submitting} />上記の内容を確認し、外部サービスへ反映します</label>{confirmationError && <p className="validation" role="alert">{confirmationError}</p>}<div className="reflection-actions"><button type="button" onClick={() => setConfirmationOpen(false)} disabled={submitting}>戻る</button><button type="button" onClick={reflectDomain} disabled={!confirmationChecked || submitting}>{submitting ? "反映中…" : "反映を実行"}</button></div></section></div>}
+    {confirmationOpen && <div className="reflection-modal-backdrop" role="presentation"><section className="reflection-modal" role="dialog" aria-modal="true" aria-labelledby="reflection-title"><div className="reflection-modal-header"><div><span className="eyebrow">REFLECTION CHECK</span><h2 id="reflection-title">反映内容を確認</h2></div><button type="button" className="modal-close" onClick={() => setConfirmationOpen(false)} disabled={submitting} aria-label="閉じる">×</button></div><dl className="reflection-details"><div><dt>サブドメイン</dt><dd>{fqdn}</dd></div><div><dt>公開先</dt><dd>{providerLabels[provider]} / {target?.name}</dd></div><div><dt>実行される変更</dt><dd>DNSと公開先のカスタムドメイン設定</dd></div></dl><p className="reflection-warning">外部サービスへ反映します。自動ロールバックは行いません。反映後は公開状態を自動で確認します。</p><label className="reflection-check"><input type="checkbox" checked={confirmationChecked} onChange={(event) => setConfirmationChecked(event.target.checked)} disabled={submitting} />上記の内容を確認し、外部サービスへ反映します</label>{confirmationError && <div className="reflection-error" role="alert"><span>{confirmationError}</span>{authRequired && <a href="/login">管理者ログインへ</a>}</div>}<div className="reflection-actions"><button type="button" onClick={() => setConfirmationOpen(false)} disabled={submitting}>戻る</button><button type="button" onClick={reflectDomain} disabled={!confirmationChecked || submitting}>{submitting ? "反映中…" : "反映を実行"}</button></div></section></div>}
   </section>;
 }
