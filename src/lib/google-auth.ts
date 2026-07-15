@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
       return user.email?.trim().toLowerCase() === allowedEmail;
     },
     async jwt({ token, user }) {
-      if (user.email) token.email = user.email.trim().toLowerCase();
+      if (user?.email) token.email = user.email.trim().toLowerCase();
       return token;
     },
     async session({ session, token }) {
