@@ -30,8 +30,8 @@ async function deleteCloudflareDnsRecord(recordId: string, env: ProviderEnv) {
   }).catch(() => undefined);
 }
 
-async function getPagesProjectSubdomain(projectId: string, env: ProviderEnv) {
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(projectId)}`, {
+async function getPagesProjectSubdomain(projectName: string, env: ProviderEnv) {
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(projectName)}`, {
     headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
     cache: "no-store",
   });
@@ -81,10 +81,10 @@ export async function POST(request: Request) {
       if (!response.ok) throw new Error("vercel_domain_create_failed");
       externalId = body.name ?? domain.fqdn;
     } else if (domain.provider === "cloudflare_pages") {
-      const pagesSubdomain = await getPagesProjectSubdomain(domain.providerTargetId, env);
+      const pagesSubdomain = await getPagesProjectSubdomain(domain.providerTargetName, env);
       // PagesはCloudflare Access/WAFを通すため、ゾーンのプロキシを有効にする。
       createdDnsRecordId = await createCloudflareDnsRecord(domain.fqdn, pagesSubdomain, env, true);
-      const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetId)}/domains`, {
+      const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetName)}/domains`, {
         method: "POST",
         headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`, "content-type": "application/json" },
         body: JSON.stringify({ name: domain.fqdn }),
