@@ -90,8 +90,8 @@ export async function POST(request: Request) {
         body: JSON.stringify({ name: domain.fqdn }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body.success) throw new Error("pages_domain_create_failed");
-      externalId = body.result?.id ?? domain.fqdn;
+      if (!response.ok || !body.success || typeof body.result?.id !== "string" || !body.result.id) throw new Error("pages_domain_create_failed");
+      externalId = body.result.id;
     } else {
       const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/domains`, {
         method: "PUT",

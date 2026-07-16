@@ -34,24 +34,64 @@ async function assertPagesProject(domain: NonNullable<Awaited<ReturnType<typeof 
     cache: "no-store",
   });
   const projectBody = await projectResponse.json().catch(() => ({}));
-  if (!projectResponse.ok || !projectBody.success || projectBody.result?.id !== domain.providerTargetId) throw new Error("pages_project_mismatch");
+  if (!projectResponse.ok || !projectBody.success || projectBody.result?.id !== domain.providerTargetId || typeof projectBody.result?.subdomain !== "string") throw new Error("pages_project_mismatch");
+  return projectBody.result.subdomain as string;
 }
 
-async function hasPagesCustomDomain(fqdn: string, domain: NonNullable<Awaited<ReturnType<typeof findManagedDomain>>>, env: ReturnType<typeof getProviderEnv>) {
+async function hasOwnedCloudflareDnsRecord(fqdn: string, recordId: string, expectedTarget: string, env: ReturnType<typeof getProviderEnv>) {
+  const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${env.CLOUDFLARE_ZONE_ID}/dns_records/${encodeURIComponent(recordId)}`, {
+    headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !body.result) throw new Error("dns_record_check_failed");
+  const normalize = (value: unknown) => typeof value === "string" ? value.replace(/\.$/, "").toLowerCase() : "";
+  return body.result.id === recordId && body.result.type === "CNAME" && normalize(body.result.name) === normalize(fqdn) && normalize(body.result.content) === normalize(expectedTarget);
+}
+
+async function findPagesCustomDomainId(fqdn: string, domain: NonNullable<Awaited<ReturnType<typeof findManagedDomain>>>, env: ReturnType<typeof getProviderEnv>) {
   await assertPagesProject(domain, env);
   for (let page = 1; page <= 100; page += 1) {
-    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetName)}/domains?page=${page}&per_page=100`, {
+    let unpaginatedFallback = false;
+    let response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetName)}/domains?page=${page}&per_page=20`, {
       headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
       cache: "no-store",
     });
-    const body = await response.json().catch(() => ({}));
+    let body = await response.json().catch(() => ({}));
+    if (!response.ok && page === 1 && body.errors?.some((error: { code?: unknown }) => error?.code === 8000024)) {
+      unpaginatedFallback = true;
+      response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetName)}/domains`, {
+        headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
+        cache: "no-store",
+      });
+      body = await response.json().catch(() => ({}));
+    }
     if (!response.ok || !body.success) throw new Error("pages_check_failed");
-    if (Array.isArray(body.result) && body.result.some((entry: { name?: unknown }) => entry?.name === fqdn)) return true;
+    if (!Array.isArray(body.result)) throw new Error("pages_check_result_invalid");
+    const match = body.result.find((entry: { id?: unknown; name?: unknown }) => entry?.name === fqdn);
+    if (match) {
+      if (typeof match.id !== "string" || !match.id) throw new Error("pages_check_id_invalid");
+      return match.id;
+    }
+    if (unpaginatedFallback) {
+      const fallbackTotalPages = body.result_info?.total_pages;
+      if (!Number.isInteger(fallbackTotalPages) || fallbackTotalPages !== 1) throw new Error("pages_check_pagination_unsupported");
+      return undefined;
+    }
     const totalPages = body.result_info?.total_pages;
     if (!Number.isInteger(totalPages) || totalPages < page) throw new Error("pages_check_pagination_invalid");
-    if (totalPages === page) return false;
+    if (totalPages === page) return undefined;
   }
   throw new Error("pages_check_pagination_failed");
+}
+
+async function hasPagesCustomDomain(fqdn: string, domain: NonNullable<Awaited<ReturnType<typeof findManagedDomain>>>, env: ReturnType<typeof getProviderEnv>, expectedExternalId: string) {
+  if (!expectedExternalId) throw new Error("pages_external_id_missing");
+  return (await findPagesCustomDomainId(fqdn, domain, env)) === expectedExternalId;
+}
+
+async function hasAnyPagesCustomDomain(fqdn: string, domain: NonNullable<Awaited<ReturnType<typeof findManagedDomain>>>, env: ReturnType<typeof getProviderEnv>) {
+  return Boolean(await findPagesCustomDomainId(fqdn, domain, env));
 }
 
 export async function POST(request: Request) {
@@ -70,7 +110,7 @@ export async function POST(request: Request) {
     if (domain.provider !== "cloudflare_pages") return Response.json({ error: "外部設定の状態を確認できないため、安全のため削除を停止しました。" }, { status: 409 });
     try {
       const env = getProviderEnv();
-      const [hasDns, hasPagesDomain] = await Promise.all([hasCloudflareDnsRecord(domain.fqdn, env), hasPagesCustomDomain(domain.fqdn, domain, env)]);
+      const [hasDns, hasPagesDomain] = await Promise.all([hasCloudflareDnsRecord(domain.fqdn, env), hasAnyPagesCustomDomain(domain.fqdn, domain, env)]);
       if (hasDns || hasPagesDomain) return Response.json({ error: "外部設定が残っているため、安全のため削除を停止しました。" }, { status: 409 });
       await markDomainDeleted(domain.id);
       return Response.json({ ok: true });
@@ -91,11 +131,19 @@ export async function POST(request: Request) {
         if (!dnsRecord) throw new Error("dns_record_missing");
         await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
       } else if (domain.provider === "cloudflare_pages") {
-        await assertPagesProject(domain, env);
+        const pagesSubdomain = await assertPagesProject(domain, env);
+        if (!dnsRecord || !(await hasOwnedCloudflareDnsRecord(domain.fqdn, dnsRecord.externalId, pagesSubdomain, env))) return Response.json({ error: "外部設定の状態を確認できないため、安全のため削除を停止しました。" }, { status: 409 });
+        const pagesDomainMatches = await hasPagesCustomDomain(domain.fqdn, domain, env, customDomain?.externalId ?? "");
+        if (!pagesDomainMatches) return Response.json({ error: "外部設定の状態を確認できないため、安全のため削除を停止しました。" }, { status: 409 });
+        // Pages APIはFQDN指定の削除のみのため、直前の保存ID照合後に実行する。
         const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetName)}/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
         const body = await response.json().catch(() => ({}));
         if (!response.ok || !body.success) throw new Error("pages_delete_failed");
         if (!dnsRecord) throw new Error("dns_record_missing");
+        if (await hasAnyPagesCustomDomain(domain.fqdn, domain, env)) return Response.json({ error: "Pages側の削除を確認できないため、DNS設定の削除を停止しました。" }, { status: 409 });
+        // CloudflareのDNS削除APIは条件付き削除に対応しないため、削除直前にも再照合する。
+        const currentPagesSubdomain = await assertPagesProject(domain, env);
+        if (!(await hasOwnedCloudflareDnsRecord(domain.fqdn, dnsRecord.externalId, currentPagesSubdomain, env))) return Response.json({ error: "DNS設定が変更されたため、安全のため削除を停止しました。" }, { status: 409 });
         await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
       } else if (domain.provider === "cloudflare_workers") {
         const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
