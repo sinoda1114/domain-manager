@@ -52,6 +52,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState("");
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [confirmationClosing, setConfirmationClosing] = useState(false);
   const [confirmationChecked, setConfirmationChecked] = useState(false);
   const [confirmationError, setConfirmationError] = useState("");
   const [authRequired, setAuthRequired] = useState(false);
@@ -79,10 +80,16 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   };
   const openConfirmation = () => {
     if (error || !target) return;
-    setConfirmationChecked(false); setConfirmationError(""); setAuthRequired(false); setConfirmationOpen(true);
+    setConfirmationChecked(false); setConfirmationError(""); setAuthRequired(false); setConfirmationClosing(false); setConfirmationOpen(true);
+  };
+  const closeConfirmation = () => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) { setConfirmationOpen(false); return; }
+    setConfirmationClosing(true);
+    setTimeout(() => { setConfirmationOpen(false); setConfirmationClosing(false); }, 130);
   };
   const reflectDomain = async () => {
-    if (error || !target || !confirmationChecked) return;
+    if (error || !target || !confirmationChecked || confirmationClosing) return;
     setSubmitting(true); setRequestError("");
     try {
       const response = await fetch("/api/domains/drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, provider, targetId, deleteAt: toJstIso(deleteAt) }) });
@@ -96,7 +103,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
         if (executeResponse.status === 401) { setAuthRequired(true); throw new Error("反映には管理者ログインが必要です。"); }
         throw new Error("反映前の確認に失敗しました。下書きは保存されています。管理中のドメインから再確認できます。");
       }
-      setConfirmationOpen(false); setConfirmationChecked(false); router.refresh();
+      setConfirmationOpen(false); setConfirmationClosing(false); setConfirmationChecked(false); router.refresh();
     } catch (caught) { setConfirmationError(caught instanceof Error ? caught.message : "反映を開始できませんでした。"); } finally { setSubmitting(false); }
   };
 
@@ -113,6 +120,6 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
       <div className="field delete-schedule"><label htmlFor="delete-at">自動削除日時 <small>任意</small></label><input id="delete-at" type="datetime-local" value={deleteAt} onChange={(event) => setDeleteAt(event.target.value)} /><span className="hint">指定した日時以降に外部設定を削除します（日本時間）</span></div>
       <div className="draft-summary"><div><span>反映するサブドメイン</span><strong>{fqdn}</strong></div><div><span>公開先</span><strong>{target ? `${providerLabels[provider]} / ${target.name}` : "未選択"}</strong>{target?.sourceUrl && <a className="source-link" href={target.sourceUrl} target="_blank" rel="noreferrer">実体URL ↗</a>}</div><div><span>自動削除</span><strong>{deleteAt ? formatJst(toJstIso(deleteAt) ?? deleteAt) : "設定なし"}</strong></div><small>確認後に反映</small></div><div className="form-actions"><span className="dry-run">反映前に内容を確認できます</span><button className="plan-button" type="button" disabled={Boolean(error) || !target || submitting} onClick={openConfirmation}>反映内容を確認</button></div>
     </div></div>
-    {confirmationOpen && <div className="reflection-modal-backdrop" role="presentation"><section className="reflection-modal" role="dialog" aria-modal="true" aria-labelledby="reflection-title"><div className="reflection-modal-header"><div><span className="eyebrow">REFLECTION CHECK</span><h2 id="reflection-title">反映内容を確認</h2></div><button type="button" className="modal-close" onClick={() => setConfirmationOpen(false)} disabled={submitting} aria-label="閉じる">×</button></div><dl className="reflection-details"><div><dt>サブドメイン</dt><dd>{fqdn}</dd></div><div><dt>公開先</dt><dd>{providerLabels[provider]} / {target?.name}</dd></div><div><dt>実行される変更</dt><dd>DNSと公開先のカスタムドメイン設定</dd></div>{deleteAt && <div><dt>自動削除</dt><dd>{formatJst(toJstIso(deleteAt) ?? deleteAt)}（日本時間）</dd></div>}</dl><p className="reflection-warning">外部サービスへ反映します。自動ロールバックは行いません。反映後は公開状態を自動で確認します。</p><label className="reflection-check"><input type="checkbox" checked={confirmationChecked} onChange={(event) => setConfirmationChecked(event.target.checked)} disabled={submitting} />上記の内容を確認し、外部サービスへ反映します</label>{confirmationError && <div className="reflection-error" role="alert"><span>{confirmationError}</span>{authRequired && <a href="/login">管理者ログインへ</a>}</div>}<div className="reflection-actions"><button type="button" onClick={() => setConfirmationOpen(false)} disabled={submitting}>戻る</button><button type="button" onClick={reflectDomain} disabled={!confirmationChecked || submitting}>{submitting ? "反映中…" : "反映を実行"}</button></div></section></div>}
+    {confirmationOpen && <div className={`reflection-modal-backdrop${confirmationClosing ? " is-closing" : ""}`} role="presentation"><section className={`reflection-modal${confirmationClosing ? " is-closing" : ""}`} role="dialog" aria-modal="true" aria-labelledby="reflection-title"><div className="reflection-modal-header"><div><span className="eyebrow">REFLECTION CHECK</span><h2 id="reflection-title">反映内容を確認</h2></div><button type="button" className="modal-close" onClick={closeConfirmation} disabled={submitting || confirmationClosing} aria-label="閉じる">×</button></div><dl className="reflection-details"><div><dt>サブドメイン</dt><dd>{fqdn}</dd></div><div><dt>公開先</dt><dd>{providerLabels[provider]} / {target?.name}</dd></div><div><dt>実行される変更</dt><dd>DNSと公開先のカスタムドメイン設定</dd></div>{deleteAt && <div><dt>自動削除</dt><dd>{formatJst(toJstIso(deleteAt) ?? deleteAt)}（日本時間）</dd></div>}</dl><p className="reflection-warning">外部サービスへ反映します。自動ロールバックは行いません。反映後は公開状態を自動で確認します。</p><label className="reflection-check"><input type="checkbox" checked={confirmationChecked} onChange={(event) => setConfirmationChecked(event.target.checked)} disabled={submitting || confirmationClosing} />上記の内容を確認し、外部サービスへ反映します</label>{confirmationError && <div className="reflection-error" role="alert"><span>{confirmationError}</span>{authRequired && <a href="/login">管理者ログインへ</a>}</div>}<div className="reflection-actions"><button type="button" onClick={closeConfirmation} disabled={submitting || confirmationClosing}>戻る</button><button type="button" onClick={reflectDomain} disabled={!confirmationChecked || submitting || confirmationClosing}>{submitting ? "反映中…" : "反映を実行"}</button></div></section></div>}
   </section>;
 }
