@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# work-summary skill output (local-only, not pushed)
+work-summary/
