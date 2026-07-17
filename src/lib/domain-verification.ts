@@ -47,7 +47,9 @@ async function verifyHttps(hostname: string, address: string) {
   await new Promise<void>((resolve, reject) => {
     const request = https.request({ hostname: address, port: 443, path: "/", method: "HEAD", servername: hostname, headers: { host: hostname }, timeout: 10_000 }, (response) => {
       response.resume();
-      if (response.statusCode && (response.statusCode < 400 || [301, 302, 307, 308].includes(response.statusCode))) resolve();
+      // TLSハンドシェイクと証明書検証が完了してレスポンスを受け取れた時点で、HTTPSは有効。
+      // 401/403などアプリ側の認証応答でも、証明書が未発行とは限らないためHTTPステータスでは判定しない。
+      if (response.statusCode) resolve();
       else reject(new Error("https_not_ready"));
     });
     request.on("timeout", () => request.destroy(new Error("https_timeout")));
