@@ -38,14 +38,17 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
   const rootRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
   const triggerId = id ?? inputId;
-  const now = useMemo(() => parseWall(toWallValue(new Date())), []);
+  const [now, setNow] = useState(() => parseWall(toWallValue(new Date())));
   const selectedValue = value ? localDateTimeValue(value) : "";
 
   useEffect(() => {
     if (!open) return;
+    const refreshNow = () => setNow(parseWall(toWallValue(new Date())));
+    refreshNow();
+    const timer = window.setInterval(refreshNow, 30_000);
     const close = (event: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false); };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    return () => { window.clearInterval(timer); document.removeEventListener("mousedown", close); };
   }, [open]);
 
   const calendarDays = useMemo(() => {
@@ -54,11 +57,16 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
     return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setUTCDate(start.getUTCDate() + index); return date; });
   }, [month]);
   const selectDate = (date: Date) => { const next = new Date(draft); next.setUTCFullYear(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()); setDraft(next); };
-  const apply = () => { if (draft.getTime() <= now.getTime()) return; onChange(wallValueFromDate(draft)); setOpen(false); };
+  const apply = () => {
+    const currentNow = parseWall(toWallValue(new Date()));
+    if (draft.getTime() <= currentNow.getTime()) { setNow(currentNow); return; }
+    onChange(wallValueFromDate(draft));
+    setOpen(false);
+  };
   const clear = () => { onChange(null); setOpen(false); };
 
   return <div className={`schedule-picker${compact ? " schedule-picker-compact" : ""}`} ref={rootRef}>
-    <button id={triggerId} type="button" className={`schedule-trigger${value ? " has-value" : ""}`} onClick={() => { if (!disabled) { setDraft(value ? parseWall(localDateTimeValue(value)) : parseWall(toWallValue(new Date(Date.now() + 60 * 60 * 1000)))); setOpen((current) => !current); } }} disabled={disabled} aria-haspopup="dialog" aria-expanded={open}>
+    <button id={triggerId} type="button" className={`schedule-trigger${value ? " has-value" : ""}`} onClick={() => { if (!disabled) { setNow(parseWall(toWallValue(new Date()))); setDraft(value ? parseWall(localDateTimeValue(value)) : parseWall(toWallValue(new Date(Date.now() + 60 * 60 * 1000)))); setOpen((current) => !current); } }} disabled={disabled} aria-haspopup="dialog" aria-expanded={open}>
       <span className="calendar-glyph" aria-hidden="true">▣</span><span>{displayValue(value)}</span><span className="schedule-chevron" aria-hidden="true">⌄</span>
     </button>
     {open && <div className="schedule-popover" role="dialog" aria-label="自動削除日時を指定">
