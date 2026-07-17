@@ -110,7 +110,6 @@ export async function updateDomainDeleteAt(domainId: string, deleteAt: string | 
   });
   return result.rowsAffected === 1;
 }
-
 export async function markManagedResourceDeleted(resourceId: string): Promise<void> {
   await getDatabaseClient().execute({ sql: "UPDATE managed_resources SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", args: [resourceId] });
 }

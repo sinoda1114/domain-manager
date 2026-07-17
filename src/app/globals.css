@@ -49,7 +49,6 @@
 .suggestion-controls .suggest-button { justify-self:center; width:220px; max-width:100%; }
 .service-kicker { display:flex; align-items:center; gap:8px; margin:0 0 9px!important; color:var(--muted)!important; font:600 10px var(--font-mono)!important; letter-spacing:.04em!important; }.service-kicker a { color:var(--blue); font-weight:700; letter-spacing:0; }.service-kicker a:hover,.service-kicker a:focus-visible { text-decoration:underline; }
 .delete-schedule-label { color:var(--amber)!important; font-weight:650; }
-
 .delete-schedule { max-width:430px; }
 .schedule-picker { position:relative; width:100%; }
 .schedule-trigger { width:100%; min-height:44px; display:flex; align-items:center; gap:9px; border:1px solid #d6dbe3; border-radius:9px; background:#fff; padding:0 12px; color:var(--muted); text-align:left; font-size:12px; transition:border-color .16s, box-shadow .16s, background .16s; }
