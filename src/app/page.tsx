@@ -20,10 +20,6 @@ function sourceUrlFor(targets: Awaited<ReturnType<typeof listProviderTargets>>, 
   return targets.find((target) => target.provider === provider && target.id === targetId)?.sourceUrl;
 }
 
-function formatDeleteAt(value: string) {
-  return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
 export default async function Home() {
   const signedIn = await isAdmin();
   if (!signedIn) redirect("/login");
