@@ -103,6 +103,14 @@ export async function markDomainDeletionFailed(domainId: string): Promise<void> 
   await getDatabaseClient().execute({ sql: "UPDATE domains SET status = 'Deletion Failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'Deleting' AND deleted_at IS NULL", args: [domainId] });
 }
 
+export async function updateDomainDeleteAt(domainId: string, deleteAt: string | null): Promise<boolean> {
+  const result = await getDatabaseClient().execute({
+    sql: "UPDATE domains SET delete_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL AND status NOT IN ('Executing', 'Deleting')",
+    args: [deleteAt, domainId],
+  });
+  return result.rowsAffected === 1;
+}
+
 export async function markManagedResourceDeleted(resourceId: string): Promise<void> {
   await getDatabaseClient().execute({ sql: "UPDATE managed_resources SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL", args: [resourceId] });
 }
