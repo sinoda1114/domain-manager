@@ -1,4 +1,5 @@
 {
+  "ignoreCommand": "node scripts/vercel-ignore-git-deploy.mjs",
   "crons": [
     {
       "path": "/api/cron/domain-status",

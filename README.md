@@ -7,10 +7,11 @@
 - 管理画面の基本レイアウト
 - サブドメイン入力の正規化と予約語・DNSラベル検証
 - Vercel / Cloudflare Pages / Cloudflare Workers の登録計画プレビュー
+- 登録時の自動削除日時（日本時間）の指定と、Vercel Cronによる期限到達後の安全な削除
 
-外部APIの作成・削除はまだ実装していません。実API連携前に、必ずドライラン、競合確認、監査ログ、リソース所有権確認を実装します。
+外部APIの作成・削除は、二段階確認、競合確認、監査ログ、リソース所有権確認を通過した操作だけが実行します。
 
-初期Tursoスキーマは [`db/migrations/0001_initial.sql`](./db/migrations/0001_initial.sql) で管理します。
+初期Tursoスキーマは [`db/migrations/0001_initial.sql`](./db/migrations/0001_initial.sql)、自動削除日時の追加は [`db/migrations/0002_add_delete_at.sql`](./db/migrations/0002_add_delete_at.sql) で管理します。`CRON_SECRET` をVercelのProduction環境へ設定し、Cronの認証に使用します。Cronは5分ごとに期限を確認し、外部設定の所有権を確認できるものだけを削除します。
 
 ## 初回セットアップ
 
@@ -29,6 +30,16 @@
    pnpm lint
    pnpm typecheck
    ```
+
+5. スキーマ変更がある場合は、デプロイ前にマイグレーションを実行します。
+
+   ```bash
+   pnpm db:migrate
+   ```
+
+   本番デプロイのCIでも `TURSO_DATABASE_URL` と `TURSO_AUTH_TOKEN` をGitHub Secretsから渡して同じ処理を実行します。適用済みのマイグレーションは再実行されません。
+
+VercelのGit自動デプロイはPreviewを含めて停止しています。新しいスキーマを使うコードがマイグレーション前に起動する競合を避けるためです。デプロイはGitHub Actionsがマイグレーションを適用した後に行います。Previewを使う場合は、Preview用Turso DBを用意し、同じマイグレーションを先に実行してからVercel CLIでデプロイしてください。
 
 本リポジトリでは `.npmrc` により、依存関係のライフサイクルスクリプトを自動実行しません。ネイティブ依存が必要になった場合は、対象パッケージを個別に確認・許可してください。
 
