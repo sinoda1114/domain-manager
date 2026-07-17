@@ -93,3 +93,4 @@
 @media (max-width:760px) { .schedule-popover { position:fixed; top:50%; left:50%; width:min(calc(100vw - 28px),340px); transform:translate(-50%,-50%); }.schedule-picker-compact .schedule-popover { left:50%; } }
 .records { overflow:visible; }
 .schedule-picker-compact .schedule-popover { top:auto; bottom:calc(100% + 8px); }
+@media (max-width:760px) { .schedule-picker-compact .schedule-popover { top:50%; bottom:auto; } }
