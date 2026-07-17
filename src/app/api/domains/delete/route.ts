@@ -2,14 +2,44 @@ import { z } from "zod";
 
 import { findManagedDomain, listOwnedManagedResources, markDomainDeleted, markDomainDeletionFailed, markManagedResourceDeleted } from "@/infrastructure/db/domain-repository";
 import { isAdmin } from "@/lib/auth";
-import { getProviderEnv } from "@/lib/env";
+import { getProviderEnv, getServerEnv } from "@/lib/env";
 
 const input = z.object({ domainId: z.string().uuid(), confirmation: z.string().min(1) });
+
+async function assertCloudflareZone(env: ReturnType<typeof getProviderEnv>) {
+  const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}`, {
+    headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` },
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => ({}));
+  const expectedZone = getServerEnv().ROOT_DOMAIN.replace(/\.$/, "").toLowerCase();
+  const actualZone = typeof body.result?.name === "string" ? body.result.name.replace(/\.$/, "").toLowerCase() : "";
+  if (!response.ok || !body.success || actualZone !== expectedZone) throw new Error("cloudflare_zone_mismatch");
+}
+
+async function isVercelDomainMissing(domain: NonNullable<Awaited<ReturnType<typeof findManagedDomain>>>, env: ReturnType<typeof getProviderEnv>) {
+  const projectResponse = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(domain.providerTargetId)}?teamId=${encodeURIComponent(env.VERCEL_TEAM_ID)}`, {
+    headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` },
+    cache: "no-store",
+  });
+  const projectBody = await projectResponse.json().catch(() => ({}));
+  if (!projectResponse.ok || projectBody.id !== domain.providerTargetId) throw new Error("vercel_project_check_failed");
+  const domainResponse = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(domain.providerTargetId)}/domains/${encodeURIComponent(domain.fqdn)}?teamId=${encodeURIComponent(env.VERCEL_TEAM_ID)}`, {
+    headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` },
+    cache: "no-store",
+  });
+  if (domainResponse.status === 404) return true;
+  if (!domainResponse.ok) throw new Error("vercel_domain_check_failed");
+  return false;
+}
 
 async function deleteCloudflareDnsRecord(recordId: string, env: ReturnType<typeof getProviderEnv>) {
   const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${env.CLOUDFLARE_ZONE_ID}/dns_records/${encodeURIComponent(recordId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
   const body = await response.json().catch(() => ({}));
+  // 404は外部側ですでに削除済み。所有権を照合したリソースに限り成功扱いにして再試行を前へ進める。
+  if (response.status === 404) return false;
   if (!response.ok || !body.success) throw new Error("dns_delete_failed");
+  return true;
 }
 
 async function hasCloudflareDnsRecord(fqdn: string, env: ReturnType<typeof getProviderEnv>) {
@@ -44,6 +74,8 @@ async function hasOwnedCloudflareDnsRecord(fqdn: string, recordId: string, expec
     cache: "no-store",
   });
   const body = await response.json().catch(() => ({}));
+  // Pages削除後にDB更新前で中断した再試行では、所有していたレコードが404になる。
+  if (response.status === 404) return "missing" as const;
   if (!response.ok || !body.success || !body.result) throw new Error("dns_record_check_failed");
   const normalize = (value: unknown) => typeof value === "string" ? value.replace(/\.$/, "").toLowerCase() : "";
   return body.result.id === recordId && body.result.type === "CNAME" && normalize(body.result.name) === normalize(fqdn) && normalize(body.result.content) === normalize(expectedTarget);
@@ -123,17 +155,27 @@ export async function POST(request: Request) {
 
   try {
     const env = getProviderEnv();
+    if (domain.status !== "Draft" && (domain.provider !== "vercel" || dnsRecord)) await assertCloudflareZone(env);
     if (domain.status !== "Draft") {
       if (domain.provider === "vercel") {
         if (customDomain) {
           const response = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(domain.providerTargetId)}/domains/${encodeURIComponent(domain.fqdn)}?teamId=${encodeURIComponent(env.VERCEL_TEAM_ID)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` } });
-          if (!response.ok) throw new Error("vercel_delete_failed");
+          if (!response.ok) {
+            if (response.status !== 404 || !(await isVercelDomainMissing(domain, env))) throw new Error("vercel_delete_failed");
+          }
           await markManagedResourceDeleted(customDomain.id);
         }
-        if (dnsRecord) { await deleteCloudflareDnsRecord(dnsRecord.externalId, env); await markManagedResourceDeleted(dnsRecord.id); }
+        if (dnsRecord) {
+          const dnsDeleted = await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
+          if (!dnsDeleted && await hasCloudflareDnsRecord(domain.fqdn, env)) throw new Error("dns_record_replaced");
+          await markManagedResourceDeleted(dnsRecord.id);
+        }
       } else if (domain.provider === "cloudflare_pages") {
         const pagesSubdomain = await assertPagesProject(domain, env);
-        if (!dnsRecord || !(await hasOwnedCloudflareDnsRecord(domain.fqdn, dnsRecord.externalId, pagesSubdomain, env))) return Response.json({ error: "外部設定の状態を確認できないため、安全のため削除を停止しました。" }, { status: 409 });
+        if (!dnsRecord) return Response.json({ error: "外部設定の状態を確認できないため、安全のため削除を停止しました。" }, { status: 409 });
+        const dnsOwnership = await hasOwnedCloudflareDnsRecord(domain.fqdn, dnsRecord.externalId, pagesSubdomain, env);
+        if (dnsOwnership === false) return Response.json({ error: "外部設定の状態を確認できないため、安全のため削除を停止しました。" }, { status: 409 });
+        if (dnsOwnership === "missing" && await hasCloudflareDnsRecord(domain.fqdn, env)) return Response.json({ error: "DNS設定が置き換えられているため、安全のため削除を停止しました。" }, { status: 409 });
         // Pages側の削除後にCronが中断しても、次回は「すでに削除済み」と判定してDNS削除へ進める。
         const pagesDomainId = await findPagesCustomDomainId(domain.fqdn, domain, env);
         if (pagesDomainId && (!customDomain || pagesDomainId !== customDomain.externalId)) return Response.json({ error: "外部設定の所有情報が確認できないため、安全のため削除を停止しました。" }, { status: 409 });
@@ -141,7 +183,7 @@ export async function POST(request: Request) {
           // Pages APIはFQDN指定の削除のみのため、直前の保存ID照合後に実行する。
           const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/${encodeURIComponent(domain.providerTargetName)}/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
           const body = await response.json().catch(() => ({}));
-          if (!response.ok || !body.success) throw new Error("pages_delete_failed");
+          if (response.status !== 404 && (!response.ok || !body.success)) throw new Error("pages_delete_failed");
           if (await hasAnyPagesCustomDomain(domain.fqdn, domain, env)) return Response.json({ error: "Pages側の削除を確認できないため、DNS設定の削除を停止しました。" }, { status: 409 });
           if (customDomain) await markManagedResourceDeleted(customDomain.id);
         } else if (customDomain) {
@@ -149,16 +191,20 @@ export async function POST(request: Request) {
           await markManagedResourceDeleted(customDomain.id);
         }
         // CloudflareのDNS削除APIは条件付き削除に対応しないため、削除直前にも再照合する。
-        const currentPagesSubdomain = await assertPagesProject(domain, env);
-        if (!(await hasOwnedCloudflareDnsRecord(domain.fqdn, dnsRecord.externalId, currentPagesSubdomain, env))) return Response.json({ error: "DNS設定が変更されたため、安全のため削除を停止しました。" }, { status: 409 });
-        await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
+        if (dnsOwnership === true) {
+          const currentPagesSubdomain = await assertPagesProject(domain, env);
+          const currentDnsOwnership = await hasOwnedCloudflareDnsRecord(domain.fqdn, dnsRecord.externalId, currentPagesSubdomain, env);
+          if (currentDnsOwnership !== true) return Response.json({ error: "DNS設定が変更されたため、安全のため削除を停止しました。" }, { status: 409 });
+          const dnsDeleted = await deleteCloudflareDnsRecord(dnsRecord.externalId, env);
+          if (!dnsDeleted && await hasCloudflareDnsRecord(domain.fqdn, env)) return Response.json({ error: "DNS設定が置き換えられているため、安全のため削除を停止しました。" }, { status: 409 });
+        }
         await markManagedResourceDeleted(dnsRecord.id);
         if (customDomain) await markManagedResourceDeleted(customDomain.id);
       } else if (domain.provider === "cloudflare_workers") {
         if (customDomain) {
           const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/workers/domains/${encodeURIComponent(domain.fqdn)}`, { method: "DELETE", headers: { Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}` } });
           const body = await response.json().catch(() => ({}));
-          if (!response.ok || !body.success) throw new Error("workers_delete_failed");
+          if (response.status !== 404 && (!response.ok || !body.success)) throw new Error("workers_delete_failed");
           await markManagedResourceDeleted(customDomain.id);
         }
       }
