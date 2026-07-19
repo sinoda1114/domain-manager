@@ -72,7 +72,12 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
     setTargetQuery(nextQuery);
     const normalized = nextQuery.trim().toLowerCase();
     const nextFiltered = availableTargets.filter((candidate) => !normalized || [candidate.name, candidate.repositoryName, candidate.id].filter(Boolean).some((value) => value?.toLowerCase().includes(normalized)));
-    setTargetId((current) => visibleTargetId(current, nextFiltered.map((item) => item.id)));
+    const nextTargetId = visibleTargetId(targetId, nextFiltered.map((item) => item.id));
+    if (nextTargetId !== targetId) {
+      setSuggestions([]);
+      setSelectedSuggestion("");
+    }
+    setTargetId(nextTargetId);
   };
   const togglePurpose = (purpose: Purpose) => setPurposes((current) => current.includes(purpose) ? (current.length === 1 ? current : current.filter((item) => item !== purpose)) : [...current, purpose]);
   const toggleTone = (tone: Tone) => setTones((current) => current.includes(tone) ? (current.length === 1 ? current : current.filter((item) => item !== tone)) : [...current, tone]);
