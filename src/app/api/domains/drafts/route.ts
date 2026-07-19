@@ -6,6 +6,7 @@ import { isAdmin } from "@/lib/auth";
 
 const inputSchema = z.object({
   label: z.string().min(1).max(63),
+  displayName: z.string().trim().min(1).max(100),
   provider: z.string(),
   targetId: z.string().min(1).max(256),
   deleteAt: z.string().datetime({ offset: true }).nullable().optional().refine((value) => !value || Date.parse(value) > Date.now(), "削除日時は現在より後に指定してください。"),
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
     const target = ensureProviderTarget(await listProviderTargets(), input.data);
     const domain = await createDraftDomain({
       label: input.data.label,
+      displayName: input.data.displayName,
       provider: target.provider,
       providerTargetId: target.id,
       providerTargetName: target.name,

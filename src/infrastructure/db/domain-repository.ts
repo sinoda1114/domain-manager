@@ -8,6 +8,7 @@ export type ManagedDomain = {
   id: string;
   label: string;
   fqdn: string;
+  displayName: string | null;
   provider: "vercel" | "cloudflare_pages" | "cloudflare_workers";
   providerTargetId: string;
   providerTargetName: string;
@@ -19,7 +20,7 @@ export type ManagedDomain = {
 
 export async function listManagedDomains(): Promise<ManagedDomain[]> {
   const result = await getDatabaseClient().execute({
-    sql: `SELECT id, label, fqdn, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at
+    sql: `SELECT id, label, fqdn, display_name, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at
           FROM domains WHERE deleted_at IS NULL ORDER BY created_at DESC`,
     args: [],
   });
@@ -28,6 +29,7 @@ export async function listManagedDomains(): Promise<ManagedDomain[]> {
     id: String(row.id),
     label: String(row.label),
     fqdn: String(row.fqdn),
+    displayName: row.display_name ? String(row.display_name) : null,
     provider: providerSchema.parse(row.provider),
     providerTargetId: String(row.provider_target_id),
     providerTargetName: String(row.provider_target_name),
@@ -40,7 +42,7 @@ export async function listManagedDomains(): Promise<ManagedDomain[]> {
 
 export async function listPendingDomains(): Promise<ManagedDomain[]> {
   const result = await getDatabaseClient().execute({
-    sql: `SELECT id, label, fqdn, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at
+    sql: `SELECT id, label, fqdn, display_name, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at
           FROM domains
           WHERE deleted_at IS NULL
             AND status IN ('DNS Pending', 'SSL Pending')
@@ -49,7 +51,7 @@ export async function listPendingDomains(): Promise<ManagedDomain[]> {
     args: [],
   });
   return result.rows.map((row) => ({
-    id: String(row.id), label: String(row.label), fqdn: String(row.fqdn),
+    id: String(row.id), label: String(row.label), fqdn: String(row.fqdn), displayName: row.display_name ? String(row.display_name) : null,
     provider: providerSchema.parse(row.provider), providerTargetId: String(row.provider_target_id),
     providerTargetName: String(row.provider_target_name), status: String(row.status),
     lastCheckedAt: row.last_checked_at ? String(row.last_checked_at) : null, deleteAt: row.delete_at ? String(row.delete_at) : null, createdAt: String(row.created_at),
@@ -57,14 +59,14 @@ export async function listPendingDomains(): Promise<ManagedDomain[]> {
 }
 
 export async function findManagedDomain(id: string): Promise<ManagedDomain | undefined> {
-  const result = await getDatabaseClient().execute({ sql: `SELECT id, label, fqdn, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at FROM domains WHERE id = ? AND deleted_at IS NULL`, args: [id] });
+  const result = await getDatabaseClient().execute({ sql: `SELECT id, label, fqdn, display_name, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at FROM domains WHERE id = ? AND deleted_at IS NULL`, args: [id] });
   const row = result.rows[0]; if (!row) return undefined;
-  return { id: String(row.id), label: String(row.label), fqdn: String(row.fqdn), provider: providerSchema.parse(row.provider), providerTargetId: String(row.provider_target_id), providerTargetName: String(row.provider_target_name), status: String(row.status), lastCheckedAt: row.last_checked_at ? String(row.last_checked_at) : null, deleteAt: row.delete_at ? String(row.delete_at) : null, createdAt: String(row.created_at) };
+  return { id: String(row.id), label: String(row.label), fqdn: String(row.fqdn), displayName: row.display_name ? String(row.display_name) : null, provider: providerSchema.parse(row.provider), providerTargetId: String(row.provider_target_id), providerTargetName: String(row.provider_target_name), status: String(row.status), lastCheckedAt: row.last_checked_at ? String(row.last_checked_at) : null, deleteAt: row.delete_at ? String(row.delete_at) : null, createdAt: String(row.created_at) };
 }
 
 export async function listExpiredDomains(): Promise<ManagedDomain[]> {
   const result = await getDatabaseClient().execute({
-    sql: `SELECT id, label, fqdn, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at
+    sql: `SELECT id, label, fqdn, display_name, provider, provider_target_id, provider_target_name, status, last_checked_at, delete_at, created_at
           FROM domains
           WHERE deleted_at IS NULL AND delete_at IS NOT NULL AND datetime(delete_at) <= CURRENT_TIMESTAMP
             AND (
@@ -75,7 +77,7 @@ export async function listExpiredDomains(): Promise<ManagedDomain[]> {
     args: [],
   });
   return result.rows.map((row) => ({
-    id: String(row.id), label: String(row.label), fqdn: String(row.fqdn), provider: providerSchema.parse(row.provider),
+    id: String(row.id), label: String(row.label), fqdn: String(row.fqdn), displayName: row.display_name ? String(row.display_name) : null, provider: providerSchema.parse(row.provider),
     providerTargetId: String(row.provider_target_id), providerTargetName: String(row.provider_target_name), status: String(row.status),
     lastCheckedAt: row.last_checked_at ? String(row.last_checked_at) : null, deleteAt: row.delete_at ? String(row.delete_at) : null,
     createdAt: String(row.created_at),
@@ -107,6 +109,14 @@ export async function updateDomainDeleteAt(domainId: string, deleteAt: string | 
   const result = await getDatabaseClient().execute({
     sql: "UPDATE domains SET delete_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL AND status NOT IN ('Executing', 'Deleting')",
     args: [deleteAt, domainId],
+  });
+  return result.rowsAffected === 1;
+}
+
+export async function updateDomainDisplayName(domainId: string, displayName: string): Promise<boolean> {
+  const result = await getDatabaseClient().execute({
+    sql: "UPDATE domains SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL AND status NOT IN ('Executing', 'Deleting')",
+    args: [displayName, domainId],
   });
   return result.rowsAffected === 1;
 }
@@ -166,6 +176,7 @@ export async function listOperations() { const result = await getDatabaseClient(
  */
 export async function createDraftDomain(input: {
   label: string;
+  displayName: string;
   provider: string;
   providerTargetId: string;
   providerTargetName: string;
@@ -174,6 +185,8 @@ export async function createDraftDomain(input: {
 }): Promise<ManagedDomain> {
   const label = subdomainLabelSchema.parse(input.label);
   const provider = providerSchema.parse(input.provider);
+  const displayName = input.displayName.trim();
+  if (!displayName || displayName.length > 100) throw new Error("invalid_display_name");
   const fqdn = toFqdn(label, getServerEnv().ROOT_DOMAIN);
   const deleteAt = input.deleteAt ?? null;
   if (deleteAt) {
@@ -184,9 +197,9 @@ export async function createDraftDomain(input: {
   const client = getDatabaseClient();
 
   await client.execute({
-    sql: `INSERT INTO domains (id, label, fqdn, provider, provider_target_id, provider_target_name, status, delete_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'Draft', ?)`,
-    args: [id, label, fqdn, provider, input.providerTargetId, input.providerTargetName, deleteAt],
+    sql: `INSERT INTO domains (id, label, fqdn, display_name, provider, provider_target_id, provider_target_name, status, delete_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'Draft', ?)`,
+    args: [id, label, fqdn, displayName, provider, input.providerTargetId, input.providerTargetName, deleteAt],
   });
 
   await client.execute({

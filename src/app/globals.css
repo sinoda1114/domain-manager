@@ -94,3 +94,19 @@
 .records { overflow:visible; }
 .schedule-picker-compact .schedule-popover { top:auto; bottom:calc(100% + 8px); }
 @media (max-width:760px) { .schedule-picker-compact .schedule-popover { top:50%; bottom:auto; } }
+.search-field { position:relative; width:100%; max-width:680px; }
+.search-field input { padding-right:38px!important; }
+.search-clear { position:absolute; top:50%; right:8px; display:grid; place-items:center; width:24px; height:24px; border:0; border-radius:50%; background:#eef2f8; color:#667085; cursor:pointer; font-size:17px; line-height:1; transform:translateY(-50%); }
+.search-clear:hover,.search-clear:focus-visible { background:var(--blue-soft); color:var(--blue); outline:0; }
+.target-field .search-field { margin-bottom:7px; }
+.management-search { display:grid; gap:7px; max-width:500px; margin:0 0 12px; }
+.management-search label { color:#3e4755; font-size:11px; font-weight:650; }
+.search-empty { margin:0; padding:24px 18px; color:var(--muted); font-size:12px; }
+.domain-name { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:2px; }
+.domain-name strong { font-size:11px; }
+.domain-name button { border:0; background:transparent; color:var(--blue); cursor:pointer; font:inherit; font-size:10px; padding:0; }
+.domain-name-editing { display:block; }
+.domain-name-editing label { display:block; margin-bottom:2px; color:var(--muted); font-size:10px; }
+.domain-name-editing input { box-sizing:border-box; max-width:100%; padding:3px 5px; font:inherit; font-size:11px; }
+.domain-name-editing div { display:flex; gap:7px; margin-top:3px; }
+.domain-name-editing span { display:block; margin-top:2px; color:var(--red); font-size:10px; }
