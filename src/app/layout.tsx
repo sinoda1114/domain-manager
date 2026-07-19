@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ShinoDev Domain Manager",
+  title: "サブドメインメーカー",
   description: "shinodev.com 配下のサブドメインを安全に管理する画面",
   icons: {
     icon: "/icon.svg",
