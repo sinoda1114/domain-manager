@@ -94,7 +94,6 @@
 .records { overflow:visible; }
 .schedule-picker-compact .schedule-popover { top:auto; bottom:calc(100% + 8px); }
 @media (max-width:760px) { .schedule-picker-compact .schedule-popover { top:50%; bottom:auto; } }
-
 .search-field { position:relative; width:100%; max-width:680px; }
 .search-field input { padding-right:38px!important; }
 .search-clear { position:absolute; top:50%; right:8px; display:grid; place-items:center; width:24px; height:24px; border:0; border-radius:50%; background:#eef2f8; color:#667085; cursor:pointer; font-size:17px; line-height:1; transform:translateY(-50%); }
