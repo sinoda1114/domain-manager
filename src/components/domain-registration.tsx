@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import type { ProviderTarget } from "@/infrastructure/providers/targets";
 import { SchedulePicker } from "@/components/schedule-picker";
+import { visibleTargetId } from "@/lib/visible-target-id";
 
 const reserved = new Set(["www", "api", "admin", "domains", "mail", "smtp", "imap", "pop", "ftp", "cdn", "static", "assets", "status", "support", "help", "docs", "dev", "test", "staging", "_acme-challenge"]);
 const providerLabels = { vercel: "Vercel", cloudflare_pages: "Cloudflare Pages", cloudflare_workers: "Cloudflare Workers" };
@@ -64,9 +65,15 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
   const availableTargets = targets.filter((target) => target.provider === provider);
   const normalizedTargetQuery = targetQuery.trim().toLowerCase();
   const filteredTargets = availableTargets.filter((candidate) => !normalizedTargetQuery || [candidate.name, candidate.repositoryName, candidate.id].filter(Boolean).some((value) => value?.toLowerCase().includes(normalizedTargetQuery)));
-  const target = availableTargets.find((candidate) => candidate.id === targetId);
+  const target = filteredTargets.find((candidate) => candidate.id === targetId);
   const fqdn = label ? `${label}.${rootDomain}` : "";
 
+  const updateTargetQuery = (nextQuery: string) => {
+    setTargetQuery(nextQuery);
+    const normalized = nextQuery.trim().toLowerCase();
+    const nextFiltered = availableTargets.filter((candidate) => !normalized || [candidate.name, candidate.repositoryName, candidate.id].filter(Boolean).some((value) => value?.toLowerCase().includes(normalized)));
+    setTargetId((current) => visibleTargetId(current, nextFiltered.map((item) => item.id)));
+  };
   const togglePurpose = (purpose: Purpose) => setPurposes((current) => current.includes(purpose) ? (current.length === 1 ? current : current.filter((item) => item !== purpose)) : [...current, purpose]);
   const toggleTone = (tone: Tone) => setTones((current) => current.includes(tone) ? (current.length === 1 ? current : current.filter((item) => item !== tone)) : [...current, tone]);
 
@@ -98,7 +105,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
     if (error || displayNameError || !target || !confirmationChecked || confirmationClosing) return;
     setSubmitting(true); setRequestError("");
     try {
-      const response = await fetch("/api/domains/drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, displayName: displayName.trim(), provider, targetId, deleteAt: toJstIso(deleteAt) }) });
+      const response = await fetch("/api/domains/drafts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label, displayName: displayName.trim(), provider, targetId: target.id, deleteAt: toJstIso(deleteAt) }) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 401) { setAuthRequired(true); throw new Error("反映には管理者ログインが必要です。"); }
@@ -117,7 +124,7 @@ export function DomainRegistration({ rootDomain, targets, compact = false }: { r
     {!compact && <div className="panel-heading"><h2>サブドメインを追加</h2></div>}
     <div className={compact ? "register-grid compact-grid" : "register-grid"}><div className="form-area">
       <div className="field"><label>配置先</label><div className="provider-options" role="radiogroup" aria-label="配置先">{providers.map((item) => <button type="button" role="radio" aria-checked={provider === item.value} className={provider === item.value ? "selected" : ""} key={item.value} onClick={() => changeProvider(item.value)}><img src={item.icon} alt="" /><span>{item.label}</span></button>)}</div></div>
-      <div className="field target-field"><label htmlFor="target">公開先プロジェクト / リポジトリ</label><div className="search-field"><input id="target-search" type="search" value={targetQuery} onChange={(event) => setTargetQuery(event.target.value)} placeholder="公開先を検索" aria-label="公開先を検索" />{targetQuery && <button type="button" className="search-clear" onClick={() => setTargetQuery("")} aria-label="検索語を消去">×</button>}</div><select id="target" value={targetId} onChange={(event) => { setTargetId(event.target.value); setSuggestions([]); setSelectedSuggestion(""); }} disabled={availableTargets.length === 0}>{availableTargets.length === 0 ? <option>利用できる公開先がありません</option> : filteredTargets.length === 0 ? <option value="">一致する公開先がありません</option> : filteredTargets.map((item) => <option key={item.id} value={item.id}>{item.repositoryName ? `${item.name} · ${item.repositoryName}` : item.name}</option>)}</select>{target?.repositoryName && <span className="hint">リポジトリ: {target.repositoryName}</span>}</div>
+      <div className="field target-field"><label htmlFor="target">公開先プロジェクト / リポジトリ</label><div className="search-field"><input id="target-search" type="search" value={targetQuery} onChange={(event) => updateTargetQuery(event.target.value)} placeholder="公開先を検索" aria-label="公開先を検索" />{targetQuery && <button type="button" className="search-clear" onClick={() => updateTargetQuery("")} aria-label="検索語を消去">×</button>}</div><select id="target" value={targetId} onChange={(event) => { setTargetId(event.target.value); setSuggestions([]); setSelectedSuggestion(""); }} disabled={availableTargets.length === 0}>{availableTargets.length === 0 ? <option value="">利用できる公開先がありません</option> : filteredTargets.length === 0 ? <option value="">一致する公開先がありません</option> : <>{!targetId && <option value="">公開先を選択</option>}{filteredTargets.map((item) => <option key={item.id} value={item.id}>{item.repositoryName ? `${item.name} · ${item.repositoryName}` : item.name}</option>)}</>}</select>{target?.repositoryName && <span className="hint">リポジトリ: {target.repositoryName}</span>}</div>
       <div className="field"><label htmlFor="display-name">サービス名</label><input id="display-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={100} placeholder="例: 顧客向けデモサイト" aria-invalid={Boolean(displayNameError)} aria-describedby="display-name-validation" />{displayNameError && <p className="validation" id="display-name-validation" role="alert">{displayNameError}</p>}</div>
       <div className="suggestion-controls"><div className="field purpose-control"><label>用途 <small>複数選択可</small></label><div className="choice-options" role="group" aria-label="用途">{purposeOptions.map((item) => <button type="button" aria-pressed={purposes.includes(item.value)} className={purposes.includes(item.value) ? "selected" : ""} key={item.value} onClick={() => togglePurpose(item.value)}><i>{item.icon}</i><span>{item.label}</span></button>)}</div></div><div className="field tone-control"><label>スタイル <small>複数選択可</small></label><div className="choice-options tone-options" role="group" aria-label="スタイル">{toneOptions.map((item) => <button type="button" aria-pressed={tones.includes(item.value)} className={tones.includes(item.value) ? "selected" : ""} key={item.value} onClick={() => toggleTone(item.value)}><i>{item.icon}</i><span>{item.label}</span></button>)}</div></div><div className="field count-control"><label htmlFor="candidate-count">候補数</label><select id="candidate-count" value={candidateCount} onChange={(event) => setCandidateCount(Number(event.target.value))}>{Array.from({ length: 10 }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count}</option>)}</select></div><button className={`suggest-button${suggesting ? " is-loading" : ""}`} type="button" disabled={!target || suggesting} onClick={suggest} aria-live="polite"><span className="suggest-spinner" aria-hidden="true" />{suggesting ? "候補を生成中…" : "候補を生成"}</button></div>
       {suggestionError && <div className="reflection-error" role="alert"><span>{suggestionError}</span>{suggestionAuthRequired && <a href="/login">管理者ログインへ</a>}</div>}
