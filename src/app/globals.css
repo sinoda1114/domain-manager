@@ -102,10 +102,12 @@
 .management-search { display:grid; gap:7px; max-width:500px; margin:0 0 12px; }
 .management-search label { color:#3e4755; font-size:11px; font-weight:650; }
 .search-empty { margin:0; padding:24px 18px; color:var(--muted); font-size:12px; }
-.domain-name { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:2px; }
-.domain-name strong { font-size:11px; }
+.domain-name { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:7px; min-height:30px; margin:0; padding:4px 7px; border-left:2px solid var(--blue); background:#f7f9ff; }
+.domain-name small { color:var(--muted); font-size:10px; }
+.domain-name strong { overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
 .domain-name button { border:0; background:transparent; color:var(--blue); cursor:pointer; font:inherit; font-size:10px; padding:0; }
 .domain-name-editing { display:block; }
+.domain-address { margin-top:2px; }
 .domain-name-editing label { display:block; margin-bottom:2px; color:var(--muted); font-size:10px; }
 .domain-name-editing input { box-sizing:border-box; max-width:100%; padding:3px 5px; font:inherit; font-size:11px; }
 .domain-name-editing div { display:flex; gap:7px; margin-top:3px; }
