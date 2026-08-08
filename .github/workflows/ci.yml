@@ -1,39 +1,19 @@
+# 標準CI呼び出し（実体: https://github.com/sinoda1114/ci-standard）
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
     branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  quality:
-    name: typecheck / lint / build / audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Type check
-        run: pnpm typecheck
-      - name: Lint
-        run: pnpm lint
-      - name: Build
-        run: pnpm build
-      - name: Audit dependencies
-        # npm監査APIの一時的な障害で、コード品質ゲート全体を誤停止させない。
-        # 脆弱性が検出された場合はaudit-levelで失敗し、レジストリ障害だけを許容する。
-        run: pnpm audit --audit-level=high --ignore-registry-errors
+  ci:
+    uses: sinoda1114/ci-standard/.github/workflows/node-ci.yml@main
+    secrets: inherit
