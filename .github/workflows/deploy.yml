@@ -30,15 +30,20 @@ jobs:
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-      - run: pnpm dlx vercel@55.0.0 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      # Vercel CLI の版は 55.0.0 から 59.25.0 へ更新した。
+      # 55.0.0 は pnpm 12 が生成する pnpm-lock.yaml（packageManagerDependencies を含む）を
+      # 解析できず、npm install へフォールバックして失敗する（2026-09-22 に本番が停止）。
+      #   Error while parsing config file: ".../pnpm-lock.yaml"
+      #   npm error Cannot read properties of null (reading 'matches')
+      - run: pnpm dlx vercel@59.25.0 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      - run: pnpm dlx vercel@55.0.0 build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - run: pnpm dlx vercel@59.25.0 build --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      - run: pnpm dlx vercel@55.0.0 deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - run: pnpm dlx vercel@59.25.0 deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
