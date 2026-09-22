@@ -2,6 +2,7 @@
   "name": "domain-manager",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@12.5.1",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,8 +14,8 @@
   "dependencies": {
     "@libsql/client": "0.17.4",
     "drizzle-orm": "0.45.2",
-    "next": "16.2.10",
-    "next-auth": "4.24.14",
+    "next": "16.3.5",
+    "next-auth": "4.24.15",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "zod": "4.4.3"
@@ -25,7 +26,7 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.3.5",
     "tailwindcss": "4.3.2",
     "typescript": "5.9.3"
   }

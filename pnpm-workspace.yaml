@@ -1,6 +1,17 @@
+# ビルドスクリプト（install / postinstall）の実行可否を明示する。
+#
+# .npmrc の ignore-scripts=true により依存パッケージのスクリプトは既定で遮断される
+# （postinstall 経由のサプライチェーン攻撃対策）。pnpm はこの遮断が発生した依存を
+# ERR_PNPM_IGNORED_BUILDS として失敗させるため、対象パッケージごとに真偽値で
+# 判断を記録する必要がある。
+#
+# 方針: 実際にネイティブビルドを必要とするものだけ true にする。
+# 現時点では両方とも prebuilt バイナリが optionalDependencies 経由で配布されており、
+# ビルドスクリプトを実行しなくても実行時に読み込める（検証済み）。
 allowBuilds:
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+  # sharp: install スクリプトは @img/sharp-<platform> の存在確認で、
+  # prebuilt が入っていればソースビルドは走らない。next の optional 依存。
+  sharp: false
+  # unrs-resolver: postinstall は napi-postinstall による
+  # optional 依存取りこぼしの回避策。pnpm では不要（lint 実行で確認済み）。
+  unrs-resolver: false
