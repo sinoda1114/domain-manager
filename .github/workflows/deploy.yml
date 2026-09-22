@@ -16,9 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # version は指定しない。package.json の packageManager フィールドから読ませる。
+      # 両方を指定すると pnpm/action-setup が "Multiple versions of pnpm specified" で落ちる
+      # （2026-09-22 に本番デプロイが実際に停止した）。版の正本は packageManager 側に一本化する。
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 24
