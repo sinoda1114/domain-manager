@@ -4,7 +4,7 @@ import { findManagedDomain, updateDomainDisplayName } from "@/infrastructure/db/
 import { isAdmin } from "@/lib/auth";
 
 const inputSchema = z.object({
-  domainId: z.string().uuid(),
+  domainId: z.uuid(),
   displayName: z.string().trim().min(1).max(100),
 });
 
