@@ -5,7 +5,7 @@ import { isAdmin } from "@/lib/auth";
 
 const inputSchema = z.object({
   domainId: z.string().uuid(),
-  deleteAt: z.string().datetime({ offset: true }).nullable(),
+  deleteAt: z.iso.datetime({ offset: true }).nullable(),
 });
 
 export async function PATCH(request: Request) {

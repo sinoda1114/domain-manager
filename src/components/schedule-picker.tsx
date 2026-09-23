@@ -84,13 +84,18 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputId = useId();
   const triggerId = id ?? `${inputId}-trigger`;
+  const pastMessageId = `${inputId}-past`;
   const [now, setNow] = useState(() => readWallNow());
   const selectedValue = value ? localDateTimeValue(value) : "";
   const canApply = isFutureSchedule(draft, now);
 
   useEffect(() => {
     if (!open) return;
-    const refreshNow = () => setNow(readWallNow());
+    // now は分精度なので、分が変わらない限り同じ参照を返して再描画を起こさない。
+    const refreshNow = () => setNow((previous) => {
+      const next = readWallNow();
+      return previous.getTime() === next.getTime() ? previous : next;
+    });
     refreshNow();
     const timer = window.setInterval(refreshNow, NOW_REFRESH_MS);
     const close = (event: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false); };
@@ -100,13 +105,19 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
 
   // 描画前に向きを決める。state ではなく属性で持ち、測定のための再描画を起こさない。
   // canApply が変わると理由の行が出入りして高さが変わるため、そのたびに測り直す。
+  // 開いたまま画面幅が変わったとき（中央モーダルとの境界をまたぐ回転など）も測り直す。
   useLayoutEffect(() => {
     const trigger = triggerRef.current;
     const popover = popoverRef.current;
     if (!open || !trigger || !popover) return;
-    // 狭い画面では CSS が画面中央のモーダル（position:fixed）にするため、向きを持たない。
-    if (getComputedStyle(popover).position === "fixed") return;
-    popover.dataset.placement = choosePlacement(compact ? "up" : "down", measureSpace(trigger), popover.offsetHeight + POPOVER_GAP_PX);
+    const place = () => {
+      // 狭い画面では CSS が画面中央のモーダル（position:fixed）にするため、向きを持たない。
+      if (getComputedStyle(popover).position === "fixed") return;
+      popover.dataset.placement = choosePlacement(compact ? "up" : "down", measureSpace(trigger), popover.offsetHeight + POPOVER_GAP_PX);
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
   }, [open, compact, canApply]);
 
   const calendarDays = useMemo(() => {
@@ -137,8 +148,8 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
       <div className="schedule-weekdays">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
       <div className="schedule-calendar">{calendarDays.map((date) => { const outside = date.getUTCMonth() !== month.getUTCMonth(); const past = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59)).getTime() < now.getTime(); return <button type="button" key={date.toISOString()} className={`${outside ? "outside " : ""}${sameDay(date, draft) ? "selected " : ""}${sameDay(date, now) ? "today" : ""}`} onClick={() => !past && selectDate(date)} disabled={past}>{date.getUTCDate()}</button>; })}</div>
       <div className="schedule-time"><label htmlFor={inputId}>時刻</label><select id={inputId} value={`${pad(draft.getUTCHours())}:${pad(Math.floor(draft.getUTCMinutes() / 15) * 15)}`} onChange={(event) => { const [hours, minutes] = event.target.value.split(":").map(Number); const next = new Date(draft); next.setUTCHours(hours, minutes, 0, 0); setDraft(next); }}>{Array.from({ length: 96 }, (_, index) => { const hours = Math.floor(index / 4); const minutes = (index % 4) * 15; const label = `${pad(hours)}:${pad(minutes)}`; return <option key={label} value={label}>{label}</option>; })}</select><span>日本時間</span></div>
-      <div className="schedule-popover-actions"><button type="button" className="schedule-clear" onClick={clear} disabled={!value}>解除</button><button type="button" className="schedule-apply" onClick={apply} disabled={!canApply}>この日時に設定</button></div>
-      {!canApply && <small className="schedule-error" role="alert">{PAST_SCHEDULE_MESSAGE}</small>}
+      <div className="schedule-popover-actions"><button type="button" className="schedule-clear" onClick={clear} disabled={!value}>解除</button><button type="button" className="schedule-apply" onClick={apply} disabled={!canApply} aria-describedby={canApply ? undefined : pastMessageId}>この日時に設定</button></div>
+      {!canApply && <small id={pastMessageId} className="schedule-error" role="alert">{PAST_SCHEDULE_MESSAGE}</small>}
       {selectedValue && <small className="schedule-selected-note">現在の設定：{displayValue(value)}</small>}
     </div>}
   </div>;

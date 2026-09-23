@@ -9,7 +9,7 @@ const inputSchema = z.object({
   displayName: z.string().trim().min(1).max(100),
   provider: z.string(),
   targetId: z.string().min(1).max(256),
-  deleteAt: z.string().datetime({ offset: true }).nullable().optional().refine((value) => !value || Date.parse(value) > Date.now(), "削除日時は現在より後に指定してください。"),
+  deleteAt: z.iso.datetime({ offset: true }).nullable().optional().refine((value) => !value || Date.parse(value) > Date.now(), "削除日時は現在より後に指定してください。"),
 });
 
 export async function POST(request: Request) {
