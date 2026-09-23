@@ -28,8 +28,8 @@ function displayValue(value: string | null) {
   return new Intl.DateTimeFormat("ja-JP", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }).format(parseWall(localDateTimeValue(value)));
 }
 
-function readWallNow(date = new Date()) {
-  return parseWall(toWallValue(date));
+function readWallNow() {
+  return parseWall(toWallValue(new Date()));
 }
 
 function isFutureSchedule(draft: Date, now: Date) {
@@ -51,7 +51,6 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
   const inputId = useId();
   const triggerId = id ?? `${inputId}-trigger`;
   const [now, setNow] = useState(() => readWallNow());
-  const [pastHint, setPastHint] = useState(false);
   const selectedValue = value ? localDateTimeValue(value) : "";
   const canApply = isFutureSchedule(draft, now);
 
@@ -74,32 +73,27 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
     const next = new Date(draft);
     next.setUTCFullYear(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
     setDraft(next);
-    setPastHint(false);
   };
   const apply = () => {
     const currentNow = readWallNow();
     setNow(currentNow);
-    if (!isFutureSchedule(draft, currentNow)) {
-      setPastHint(true);
-      return;
-    }
-    setPastHint(false);
+    if (!isFutureSchedule(draft, currentNow)) return;
     onChange(wallValueFromDate(draft));
     setOpen(false);
   };
   const clear = () => { onChange(null); setOpen(false); };
 
   return <div className={`schedule-picker${compact ? " schedule-picker-compact" : ""}`} ref={rootRef}>
-    <button id={triggerId} type="button" className={`schedule-trigger${value ? " has-value" : ""}`} onClick={() => { if (!disabled) { setNow(readWallNow()); setPastHint(false); setDraft(value ? parseWall(localDateTimeValue(value)) : parseWall(toWallValue(new Date(Date.now() + 60 * 60 * 1000)))); setOpen((current) => !current); } }} disabled={disabled} aria-haspopup="dialog" aria-expanded={open}>
+    <button id={triggerId} type="button" className={`schedule-trigger${value ? " has-value" : ""}`} onClick={() => { if (!disabled) { setNow(readWallNow()); setDraft(value ? parseWall(localDateTimeValue(value)) : parseWall(toWallValue(new Date(Date.now() + 60 * 60 * 1000)))); setOpen((current) => !current); } }} disabled={disabled} aria-haspopup="dialog" aria-expanded={open}>
       <span className="calendar-glyph" aria-hidden="true">▣</span><span>{displayValue(value)}</span><span className="schedule-chevron" aria-hidden="true">⌄</span>
     </button>
     {open && <div className="schedule-popover" role="dialog" aria-label="自動削除日時を指定">
       <div className="schedule-popover-head"><button type="button" onClick={() => setMonth(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() - 1, 1)))} aria-label="前の月">‹</button><strong>{new Intl.DateTimeFormat("ja-JP", { timeZone: "UTC", year: "numeric", month: "long" }).format(month)}</strong><button type="button" onClick={() => setMonth(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1)))} aria-label="次の月">›</button></div>
       <div className="schedule-weekdays">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
       <div className="schedule-calendar">{calendarDays.map((date) => { const outside = date.getUTCMonth() !== month.getUTCMonth(); const past = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59)).getTime() < now.getTime(); return <button type="button" key={date.toISOString()} className={`${outside ? "outside " : ""}${sameDay(date, draft) ? "selected " : ""}${sameDay(date, now) ? "today" : ""}`} onClick={() => !past && selectDate(date)} disabled={past}>{date.getUTCDate()}</button>; })}</div>
-      <div className="schedule-time"><label htmlFor={inputId}>時刻</label><select id={inputId} value={`${pad(draft.getUTCHours())}:${pad(Math.floor(draft.getUTCMinutes() / 15) * 15)}`} onChange={(event) => { const [hours, minutes] = event.target.value.split(":").map(Number); const next = new Date(draft); next.setUTCHours(hours, minutes, 0, 0); setDraft(next); setPastHint(false); }}>{Array.from({ length: 96 }, (_, index) => { const hours = Math.floor(index / 4); const minutes = (index % 4) * 15; const label = `${pad(hours)}:${pad(minutes)}`; return <option key={label} value={label}>{label}</option>; })}</select><span>日本時間</span></div>
+      <div className="schedule-time"><label htmlFor={inputId}>時刻</label><select id={inputId} value={`${pad(draft.getUTCHours())}:${pad(Math.floor(draft.getUTCMinutes() / 15) * 15)}`} onChange={(event) => { const [hours, minutes] = event.target.value.split(":").map(Number); const next = new Date(draft); next.setUTCHours(hours, minutes, 0, 0); setDraft(next); }}>{Array.from({ length: 96 }, (_, index) => { const hours = Math.floor(index / 4); const minutes = (index % 4) * 15; const label = `${pad(hours)}:${pad(minutes)}`; return <option key={label} value={label}>{label}</option>; })}</select><span>日本時間</span></div>
       <div className="schedule-popover-actions"><button type="button" className="schedule-clear" onClick={clear} disabled={!value}>解除</button><button type="button" className="schedule-apply" onClick={apply} disabled={!canApply}>この日時に設定</button></div>
-      {pastHint && <small className="schedule-error" role="alert">{PAST_SCHEDULE_MESSAGE}</small>}
+      {!canApply && <small className="schedule-error" role="alert">{PAST_SCHEDULE_MESSAGE}</small>}
       {selectedValue && <small className="schedule-selected-note">現在の設定：{displayValue(value)}</small>}
     </div>}
   </div>;
