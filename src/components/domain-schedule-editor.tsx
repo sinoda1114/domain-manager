@@ -14,8 +14,17 @@ function toJstIso(value: string | null) {
 export function DomainScheduleEditor({ domainId, deleteAt, disabled = false }: { domainId: string; deleteAt: string | null; disabled?: boolean }) {
   const router = useRouter();
   const [value, setValue] = useState(deleteAt);
+  const [seenDeleteAt, setSeenDeleteAt] = useState(deleteAt);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // 行の key は domain.id で安定しており、router.refresh() では再マウントされない。
+  // サーバの値（props）が変わったら表示を合わせ、別タブや cron による変更を反映する。
+  if (deleteAt !== seenDeleteAt) {
+    setSeenDeleteAt(deleteAt);
+    setValue(deleteAt);
+  }
+
   const save = async (nextValue: string | null) => {
     const previous = value;
     setValue(nextValue ? toJstIso(nextValue) : null); setSaving(true); setError("");
