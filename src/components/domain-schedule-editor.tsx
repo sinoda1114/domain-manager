@@ -21,6 +21,7 @@ export function DomainScheduleEditor({ domainId, deleteAt, disabled = false }: {
 
   // 行の key は domain.id で安定しており、router.refresh() では再マウントされない。
   // サーバの値（props）が変わったら表示を合わせ、別タブや cron による変更を反映する。
+  // error はここで消さない。保存失敗の直後にも refresh で同期が走るため、消すと失敗の理由が見えなくなる。
   if (deleteAt !== syncedDeleteAt) {
     setSyncedDeleteAt(deleteAt);
     setValue(deleteAt);
@@ -34,8 +35,11 @@ export function DomainScheduleEditor({ domainId, deleteAt, disabled = false }: {
       if (!response.ok) throw new Error(body.error ?? "削除日時を更新できませんでした。");
       router.refresh();
     } catch (caught) {
-      // 保存前の値ではなく、その時点のサーバの値に戻す。保存中に別タブの変更が届いていることがある。
+      // 保存前の値ではなく、サーバの最新の状態に合わせ直す。409 はドメインが処理中になった・削除されたなど、
+      // サーバ側が変わったときに返るため、手元の props も古いことがある。refresh で props を取り直し、
+      // 同期済みの印を外して、届いた props（削除日時と無効化の状態）に表示を合わせる。
       setSyncedDeleteAt(undefined);
+      router.refresh();
       setError(caught instanceof Error ? caught.message : "削除日時を更新できませんでした。");
     } finally { setSaving(false); }
   };
