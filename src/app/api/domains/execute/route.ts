@@ -7,7 +7,7 @@ import { isAdmin } from "@/lib/auth";
 import { getProviderEnv } from "@/lib/env";
 import { verifyPublicDomain } from "@/lib/domain-verification";
 
-const input = z.object({ domainId: z.string().uuid(), confirmation: z.string().min(1) });
+const input = z.object({ domainId: z.uuid(), confirmation: z.string().min(1) });
 const vercelCnameTarget = "cname.vercel-dns.com";
 
 type ProviderEnv = ReturnType<typeof getProviderEnv>;

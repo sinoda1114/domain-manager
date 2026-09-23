@@ -4,7 +4,7 @@ import { findManagedDomain, listOwnedManagedResources, markDomainDeleted, markDo
 import { isAdmin } from "@/lib/auth";
 import { getProviderEnv, getServerEnv } from "@/lib/env";
 
-const input = z.object({ domainId: z.string().uuid(), confirmation: z.string().min(1) });
+const input = z.object({ domainId: z.uuid(), confirmation: z.string().min(1) });
 
 async function assertCloudflareZone(env: ReturnType<typeof getProviderEnv>) {
   const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}`, {

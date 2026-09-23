@@ -4,7 +4,7 @@ import { findManagedDomain, updateDomainDeleteAt } from "@/infrastructure/db/dom
 import { isAdmin } from "@/lib/auth";
 
 const inputSchema = z.object({
-  domainId: z.string().uuid(),
+  domainId: z.uuid(),
   deleteAt: z.iso.datetime({ offset: true }).nullable(),
 });
 

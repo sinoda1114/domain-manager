@@ -4,7 +4,7 @@ import { findManagedDomain, updateDomainVerification } from "@/infrastructure/db
 import { isAdmin } from "@/lib/auth";
 import { verifyPublicDomain } from "@/lib/domain-verification";
 
-const input = z.object({ domainId: z.string().uuid() });
+const input = z.object({ domainId: z.uuid() });
 
 export async function POST(request: Request) {
   if (!(await isAdmin())) return Response.json({ error: "ログインが必要です。" }, { status: 401 });
