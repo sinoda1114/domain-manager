@@ -1,7 +1,7 @@
 # Dependabot 設定
 #
 # npm 依存の更新 PR を毎週自動作成する。
-# 方針: lockfile（package-lock.json）はコミット対象であり、Dependabot は
+# 方針: lockfile（pnpm-lock.yaml）はコミット対象であり、Dependabot は
 #       それを前提に更新 PR を出す。CI（.github/workflows/ci.yml）が
 #       型・lint・テスト・ビルド・audit を検証するゲートとして働く。
 version: 2
@@ -15,4 +15,11 @@ updates:
     # PR タイトルに付与する接頭辞（コミット履歴の見通し向上）。
     commit-message:
       prefix: "deps"
+    ignore:
+      # @types/node は本番ランタイム（Vercel の Node.js 24.x）と同じメジャーに固定する。
+      # 新しいメジャーの型を入れると、本番に存在しない API を tsc が通してしまう。
+      # 24 系内のマイナー・パッチ更新は引き続き受け取る。
+      # 本番の Node を上げるときは、この ignore を外してから @types/node を上げる。
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
