@@ -99,6 +99,7 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
   }, [open]);
 
   // 描画前に向きを決める。state ではなく属性で持ち、測定のための再描画を起こさない。
+  // canApply が変わると理由の行が出入りして高さが変わるため、そのたびに測り直す。
   useLayoutEffect(() => {
     const trigger = triggerRef.current;
     const popover = popoverRef.current;
@@ -106,7 +107,7 @@ export function SchedulePicker({ value, onChange, disabled = false, compact = fa
     // 狭い画面では CSS が画面中央のモーダル（position:fixed）にするため、向きを持たない。
     if (getComputedStyle(popover).position === "fixed") return;
     popover.dataset.placement = choosePlacement(compact ? "up" : "down", measureSpace(trigger), popover.offsetHeight + POPOVER_GAP_PX);
-  }, [open, compact]);
+  }, [open, compact, canApply]);
 
   const calendarDays = useMemo(() => {
     const first = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1));
